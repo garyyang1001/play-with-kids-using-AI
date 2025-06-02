@@ -19,6 +19,7 @@ import type {
 /**
  * VoiceAIClient - 語音AI客戶端
  * 使用 Google Gemini Live API 進行即時語音對話
+ * 根據真正的官方代碼實作
  */
 export class VoiceAIClient {
   private genAI: GoogleGenAI;
@@ -46,12 +47,12 @@ export class VoiceAIClient {
       throw new Error('未設定 Gemini API Key。請在 .env.local 中設定 NEXT_PUBLIC_GEMINI_API_KEY');
     }
     
-    // 獲取模型名稱，優先使用環境變數，使用官方文檔的正確模型名稱
+    // 獲取模型名稱，使用官方代碼的正確模型名稱
     const modelName = process.env.NEXT_PUBLIC_GEMINI_MODEL || config.model || 'models/gemini-2.5-flash-preview-native-audio-dialog';
     
-    // 合併配置，避免重複指定屬性，使用官方推薦設定
+    // 合併配置，避免重複指定屬性
     this.config = {
-      voice: 'Zephyr',  // 官方示例使用的語音
+      voice: 'Zephyr',  // 官方代碼使用的語音
       language: 'zh-TW',
       sampleRate: 16000,  // Live API 建議使用 16kHz 輸入
       ...config,
@@ -59,7 +60,7 @@ export class VoiceAIClient {
       model: modelName  // 明確設定模型名稱
     };
     
-    // 根據官方文檔初始化 GoogleGenAI
+    // 根據官方代碼初始化 GoogleGenAI（不需要特殊配置）
     this.genAI = new GoogleGenAI({
       apiKey: this.config.apiKey
     });
@@ -172,10 +173,11 @@ export class VoiceAIClient {
 
   /**
    * 建立與 Gemini Live API 的連接
+   * 根據官方代碼的完整配置
    */
   private async establishLiveConnection(): Promise<void> {
     try {
-      // 根據官方文檔的配置
+      // 完全按照官方代碼的配置
       const sessionConfig = {
         responseModalities: [Modality.AUDIO],
         mediaResolution: MediaResolution.MEDIA_RESOLUTION_MEDIUM,
@@ -286,7 +288,7 @@ export class VoiceAIClient {
   }
 
   /**
-   * 處理伺服器訊息
+   * 處理伺服器訊息 - 根據官方代碼的處理方式
    */
   private handleServerMessage(message: LiveServerMessage): void {
     if (message.serverContent?.modelTurn?.parts) {
@@ -305,7 +307,7 @@ export class VoiceAIClient {
         this.emit('message', assistantMessage);
       }
 
-      // 處理音訊回應
+      // 處理音訊回應 - 按照官方代碼的方式
       if (part?.inlineData) {
         this.handleAudioResponse(part.inlineData);
       }
@@ -318,13 +320,13 @@ export class VoiceAIClient {
   }
 
   /**
-   * 處理音訊回應
+   * 處理音訊回應 - 根據官方代碼優化
    */
   private handleAudioResponse(inlineData: any): void {
     try {
       this.audioParts.push(inlineData?.data ?? '');
 
-      // 使用瀏覽器相容的 WAV 轉換方法
+      // 使用官方代碼的音訊處理方式
       const buffer = this.convertToWav(this.audioParts, inlineData.mimeType ?? '');
       
       // 播放音訊
@@ -336,7 +338,7 @@ export class VoiceAIClient {
   }
 
   /**
-   * 轉換為 WAV 格式（瀏覽器相容版本）
+   * 轉換為 WAV 格式 - 根據官方代碼
    */
   private convertToWav(rawData: string[], mimeType: string): ArrayBuffer {
     const options = this.parseMimeType(mimeType);
@@ -381,7 +383,7 @@ export class VoiceAIClient {
   }
 
   /**
-   * 解析 MIME 類型
+   * 解析 MIME 類型 - 根據官方代碼
    */
   private parseMimeType(mimeType: string) {
     const [fileType, ...params] = mimeType.split(';').map(s => s.trim());
@@ -390,7 +392,7 @@ export class VoiceAIClient {
     const options: any = {
       numChannels: 1,
       bitsPerSample: 16,
-      sampleRate: 24000,  // Live API 音訊輸出使用 24kHz
+      sampleRate: 24000,  // 預設值，會從 mimeType 參數中覆蓋
     };
 
     if (format && format.startsWith('L')) {
@@ -411,7 +413,7 @@ export class VoiceAIClient {
   }
 
   /**
-   * 創建 WAV 標頭（瀏覽器相容版本）
+   * 創建 WAV 標頭 - 根據官方代碼
    */
   private createWavHeader(dataLength: number, options: any): Uint8Array {
     const {
@@ -557,7 +559,7 @@ export class VoiceAIClient {
           const base64Audio = this.arrayBufferToBase64(arrayBuffer);
           
           if (this.session) {
-            // 使用 sendRealtimeInput 發送音訊
+            // 使用 sendRealtimeInput 發送音訊，按照官方代碼格式
             this.session.sendRealtimeInput({
               audio: {
                 data: base64Audio,
