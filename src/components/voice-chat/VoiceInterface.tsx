@@ -56,11 +56,13 @@ export const VoiceInterface: React.FC<VoiceInterfaceProps> = ({
     try {
       const config: VoiceAIConfig = {
         apiKey: process.env.NEXT_PUBLIC_GOOGLE_AI_API_KEY || '',
-        model: 'gemini-2.5-flash-preview-native-audio-dialog',
+        // 移除硬編碼的模型名稱，讓 voice-ai-client 從環境變數讀取
         voice: 'Leda',
         language: 'zh-TW',
-        sampleRate: 24000
+        sampleRate: 16000
       };
+      
+      console.log('初始化語音客戶端，使用模型:', process.env.NEXT_PUBLIC_GEMINI_MODEL || 'gemini-2.5-flash-preview-native-audio-dialog');
       
       const client = new VoiceAIClient(config);
       
