@@ -347,3 +347,5 @@ export const VoiceInterface: React.FC<VoiceInterfaceProps> = ({
     </div>
   );
 };
+
+export type { VoiceInterfaceProps };
