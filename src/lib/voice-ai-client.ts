@@ -39,16 +39,23 @@ export class VoiceAIClient {
   private audioParts: string[] = [];
 
   constructor(config: VoiceAIConfig) {
+    // 獲取模型名稱，優先使用環境變數
+    const modelName = process.env.NEXT_PUBLIC_GEMINI_MODEL || config.model || 'gemini-2.5-flash-preview-native-audio-dialog';
+    
     this.config = {
-      model: 'gemini-2.0-flash-live-001',  // 使用正確的 Live API 模型
-      voice: 'Aoede',
+      model: modelName,
+      voice: 'Leda',  // 使用支援中文的語音
       language: 'zh-TW',
-      sampleRate: 16000,
+      sampleRate: 16000,  // Live API 建議使用 16kHz 輸入
       ...config
     };
     
+    // 使用 v1alpha API 版本以支援原生音訊功能
     this.genAI = new GoogleGenAI({
       apiKey: this.config.apiKey,
+      httpOptions: {
+        apiVersion: "v1alpha"  // 原生音訊功能需要 v1alpha
+      }
     });
 
     this.sessionId = uuidv4();
@@ -168,15 +175,23 @@ export class VoiceAIClient {
         speechConfig: {
           voiceConfig: {
             prebuiltVoiceConfig: {
-              voiceName: this.config.voice || 'Aoede',
+              voiceName: this.config.voice || 'Leda',
             }
           }
+        },
+        // 啟用情感對話（僅原生音訊模型支援）
+        enableAffectiveDialog: true,
+        // 啟用主動式音訊（僅原生音訊模型支援）
+        proactivity: {
+          proactiveAudio: true
         },
         contextWindowCompression: {
           triggerTokens: '25600',
           slidingWindow: { targetTokens: '12800' },
         },
       };
+
+      console.log('正在連接模型:', this.config.model);
 
       this.session = await this.genAI.live.connect({
         model: this.config.model,
@@ -207,7 +222,7 @@ export class VoiceAIClient {
       console.log('Gemini Live API 連接已建立');
     } catch (error) {
       console.error('Gemini Live API 連接失敗:', error);
-      throw new Error('無法連接到語音AI服務');
+      throw new Error(`無法連接到語音AI服務: ${error instanceof Error ? error.message : '未知錯誤'}`);
     }
   }
 
@@ -220,7 +235,10 @@ export class VoiceAIClient {
     const systemPrompt = this.buildSystemPrompt();
     
     this.session.sendClientContent({
-      turns: [systemPrompt]
+      turns: [{
+        role: "user",
+        parts: [{ text: systemPrompt }]
+      }]
     });
   }
 
@@ -246,9 +264,7 @@ export class VoiceAIClient {
 請始終保持積極、耐心、鼓勵的態度。`;
 
     if (this.promptContext) {
-      return `${basePrompt}
-
-當前創作情境：
+      return `${basePrompt}\n\n當前創作情境：
 - 模板：${this.promptContext.templateName}
 - 學習目標：${this.promptContext.learningGoals.join(', ')}
 - 對話階段：第 ${this.promptContext.currentStep} 步
@@ -288,7 +304,7 @@ export class VoiceAIClient {
         this.emit('message', assistantMessage);
       }
 
-      // 處理音訊回應（按照範例代碼的方式）
+      // 處理音訊回應
       if (part?.inlineData) {
         this.handleAudioResponse(part.inlineData);
       }
@@ -301,7 +317,7 @@ export class VoiceAIClient {
   }
 
   /**
-   * 處理音訊回應（按照範例代碼的實作）
+   * 處理音訊回應
    */
   private handleAudioResponse(inlineData: any): void {
     try {
@@ -373,7 +389,7 @@ export class VoiceAIClient {
     const options: any = {
       numChannels: 1,
       bitsPerSample: 16,
-      sampleRate: this.config.sampleRate,
+      sampleRate: 24000,  // Live API 音訊輸出使用 24kHz
     };
 
     if (format && format.startsWith('L')) {
@@ -536,14 +552,17 @@ export class VoiceAIClient {
           const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
           const arrayBuffer = await audioBlob.arrayBuffer();
           
-          // 將音訊轉換為 base64 並發送
+          // 將音訊轉換為 base64 並發送到 Live API
           const base64Audio = this.arrayBufferToBase64(arrayBuffer);
           
-          // 發送到 Live API（這裡需要正確的發送方式）
           if (this.session) {
-            // 注意：這裡需要按照實際的 Live API 介面調整
-            console.log('音訊已準備發送，長度:', base64Audio.length);
-            // 實際實作需要查閱 Live API 的音訊發送方法
+            // 使用 sendRealtimeInput 發送音訊
+            this.session.sendRealtimeInput({
+              audio: {
+                data: base64Audio,
+                mimeType: "audio/pcm;rate=16000"
+              }
+            });
           }
           
         } catch (error) {
