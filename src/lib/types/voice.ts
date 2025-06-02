@@ -1,87 +1,81 @@
-// 語音AI系統相關類型定義
-
-/**
- * 語音AI客戶端配置
- */
+// 語音系統核心類型定義
 export interface VoiceAIConfig {
-  apiKey: string;
-  model: string;
-  voice: string;
-  language: string;
-  sampleRate: number;
+  apiKey: string
+  model: string
+  voice?: string
+  language?: string
+  sampleRate?: number
 }
 
-/**
- * 語音連接狀態
- */
-export enum VoiceConnectionState {
-  DISCONNECTED = 'disconnected',
-  CONNECTING = 'connecting',
-  CONNECTED = 'connected',
-  RECONNECTING = 'reconnecting',
-  ERROR = 'error'
+export interface VoiceMessage {
+  id: string
+  type: 'user' | 'assistant'
+  content: string
+  timestamp: number
+  audioData?: ArrayBuffer
 }
 
-/**
- * 語音會話狀態
- */
-export enum VoiceSessionState {
-  IDLE = 'idle',
-  LISTENING = 'listening',
-  PROCESSING = 'processing',
-  SPEAKING = 'speaking',
-  PAUSED = 'paused'
+export interface VoiceState {
+  isConnected: boolean
+  isRecording: boolean
+  isPlaying: boolean
+  isLoading: boolean
+  error: string | null
+  connectionId?: string
 }
 
-/**
- * 音訊品質設定
- */
-export interface AudioQualitySettings {
-  echoCancellation: boolean;
-  noiseSuppression: boolean;
-  autoGainControl: boolean;
-  sampleRate: number;
-  channelCount: number;
+export interface AudioConfig {
+  sampleRate: number
+  channels: number
+  bitsPerSample: number
+  format: 'pcm' | 'wav'
 }
 
-/**
- * 語音互動事件
- */
-export interface VoiceInteractionEvent {
-  type: 'user_speech_start' | 'user_speech_end' | 'ai_response_start' | 'ai_response_end' | 'error';
-  timestamp: number;
-  data?: any;
+export interface VoiceAIClientEvents {
+  connected: () => void
+  disconnected: () => void
+  error: (error: Error) => void
+  message: (message: VoiceMessage) => void
+  audioReceived: (audioData: ArrayBuffer) => void
+  stateChanged: (state: VoiceState) => void
 }
 
-/**
- * 語音轉錄結果
- */
-export interface TranscriptionResult {
-  text: string;
-  confidence: number;
-  isFinal: boolean;
-  timestamp: number;
+export interface ConnectionStatus {
+  connected: boolean
+  lastPingTime: number
+  reconnectAttempts: number
+  quality: 'excellent' | 'good' | 'poor' | 'unstable'
 }
 
-/**
- * AI語音回應
- */
-export interface AIVoiceResponse {
-  text: string;
-  audioData: ArrayBuffer;
-  timestamp: number;
-  emotion?: string;
-  confidence: number;
+export interface VoicePromptContext {
+  templateId: string
+  templateName: string
+  conversationHistory: VoiceMessage[]
+  currentStep: number
+  learningGoals: string[]
 }
 
-/**
- * 語音會話統計
- */
-export interface VoiceSessionStats {
-  totalDuration: number;
-  userSpeechDuration: number;
-  aiResponseDuration: number;
-  interactionCount: number;
-  averageLatency: number;
-  qualityScore: number;
+export interface PromptOptimizationSuggestion {
+  category: 'clarity' | 'detail' | 'emotion' | 'visual' | 'structure'
+  originalText: string
+  improvedText: string
+  explanation: string
+  priority: 'high' | 'medium' | 'low'
+}
+
+export interface VoiceSessionData {
+  sessionId: string
+  templateId: string
+  startTime: number
+  endTime?: number
+  messages: VoiceMessage[]
+  promptOptimizations: PromptOptimizationSuggestion[]
+  qualityScores: {
+    clarity: number
+    detail: number
+    emotion: number
+    visual: number
+    structure: number
+    overall: number
+  }
 }
