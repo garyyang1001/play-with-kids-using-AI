@@ -172,7 +172,7 @@ export default function VideoGenerationDemoPage() {
                 <div className="bg-gray-50 p-3 rounded-lg">
                   <div className="text-xs text-gray-500 mb-1">故事描述：</div>
                   <div className="text-sm text-gray-800 font-medium">
-                    "{prompt.prompt}"
+                    &ldquo;{prompt.prompt}&rdquo;
                   </div>
                 </div>
 
