@@ -1,28 +1,32 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { useState } from 'react'
 
 export default function Home() {
   const router = useRouter()
-  const [showAlert, setShowAlert] = useState(false)
 
   const handleTemplateClick = (templateName: string) => {
-    // 暫時顯示提示，之後可以改為實際的模板頁面路由
-    alert(`點擊了${templateName}模板！\n即將前往創作頁面...`)
-    // router.push(`/template-experience?template=${templateName}`)
+    // 真正的路由跳轉到模板體驗頁面
+    router.push(`/template-experience?template=${encodeURIComponent(templateName)}`)
   }
 
   const handleStartExperience = () => {
-    // 前往第一個模板或選擇頁面
-    alert('開始免費體驗！\n請選擇下方的創作主題')
-    // router.push('/template-experience')
+    // 前往模板選擇頁面
+    router.push('/template-experience')
   }
 
   const handleNavigation = (page: string) => {
-    alert(`導航到：${page}\n(功能開發中...)`)
-    // 之後可以實作具體的頁面跳轉
-    // router.push(`/${page}`)
+    // 檢查是否有對應的頁面
+    switch(page) {
+      case 'learning-report':
+        router.push('/learning-report')
+        break
+      case 'voice-chat':
+        router.push('/voice-chat')
+        break
+      default:
+        alert(`導航到：${page}\n(功能開發中...)`)
+    }
   }
 
   return (
@@ -39,7 +43,7 @@ export default function Home() {
             </div>
             <nav className="hidden md:flex space-x-8">
               <button 
-                onClick={() => handleNavigation('create')}
+                onClick={() => router.push('/template-experience')}
                 className="text-text hover:text-primary transition-colors"
               >
                 開始創作
@@ -151,7 +155,7 @@ export default function Home() {
           </h3>
           <div className="grid md:grid-cols-4 gap-8">
             <div className="text-center hover:transform hover:scale-105 transition-all duration-200 cursor-pointer"
-                 onClick={() => alert('步驟 1：選擇適合的創作主題\n可以從基礎級開始！')}>
+                 onClick={() => router.push('/template-experience')}>
               <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
                 <span className="text-2xl">📝</span>
               </div>
@@ -160,7 +164,7 @@ export default function Home() {
             </div>
             
             <div className="text-center hover:transform hover:scale-105 transition-all duration-200 cursor-pointer"
-                 onClick={() => alert('步驟 2：語音對話\n用自然的中文和 AI 對話！')}>
+                 onClick={() => alert('步驟 2：語音對話\n用自然的中文和 AI 對話！\n\n點擊模板開始體驗完整流程')}>
               <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
                 <span className="text-2xl">🎤</span>
               </div>
@@ -169,7 +173,7 @@ export default function Home() {
             </div>
             
             <div className="text-center hover:transform hover:scale-105 transition-all duration-200 cursor-pointer"
-                 onClick={() => alert('步驟 3：AI 生成影片\n等待 2-3 分鐘就能看到精美動畫！')}>
+                 onClick={() => alert('步驟 3：AI 生成影片\n等待 2-3 分鐘就能看到精美動畫！\n\n使用 Veo2 技術生成高品質影片')}>
               <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
                 <span className="text-2xl">🎬</span>
               </div>
@@ -178,7 +182,7 @@ export default function Home() {
             </div>
             
             <div className="text-center hover:transform hover:scale-105 transition-all duration-200 cursor-pointer"
-                 onClick={() => alert('步驟 4：分享作品\n展示你和孩子的學習成果！')}>
+                 onClick={() => alert('步驟 4：分享作品\n展示你和孩子的學習成果！\n\n自動生成社群分享內容')}>
               <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
                 <span className="text-2xl">📱</span>
               </div>
@@ -194,19 +198,19 @@ export default function Home() {
         <div className="max-w-7xl mx-auto">
           <div className="grid md:grid-cols-3 gap-8">
             <div className="text-center hover:transform hover:scale-105 transition-all duration-200 cursor-pointer"
-                 onClick={() => alert('AI 語音引導功能\n✓ 支援繁體中文\n✓ 親子友善互動\n✓ 即時回應')}>
+                 onClick={() => alert('AI 語音引導功能\n✓ 支援繁體中文\n✓ 親子友善互動\n✓ 即時回應\n✓ 語音品質優化\n\n使用 Google Gemini 2.0 Live API')}>
               <h4 className="text-xl font-bold text-text mb-4">AI 語音引導</h4>
               <p className="text-gray-600">支援中文對話，親子互動</p>
             </div>
             
             <div className="text-center hover:transform hover:scale-105 transition-all duration-200 cursor-pointer"
-                 onClick={() => alert('Prompt 教學功能\n✓ 學習 AI 溝通技巧\n✓ 即時優化建議\n✓ 創意表達提升')}>
+                 onClick={() => alert('Prompt 教學功能\n✓ 學習 AI 溝通技巧\n✓ 即時優化建議\n✓ 創意表達提升\n✓ 5維度品質評分\n\n掌握未來必備技能')}>
               <h4 className="text-xl font-bold text-text mb-4">Prompt 教學</h4>
               <p className="text-gray-600">學習 AI 溝通技巧</p>
             </div>
             
             <div className="text-center hover:transform hover:scale-105 transition-all duration-200 cursor-pointer"
-                 onClick={() => alert('高品質影片輸出\n✓ 9:16 豎屏動畫\n✓ 適合社群分享\n✓ 專業級品質')}>
+                 onClick={() => alert('高品質影片輸出\n✓ 9:16 豎屏動畫\n✓ 適合社群分享\n✓ 專業級品質\n✓ Veo2 AI 技術\n\n創造驚豔的視覺作品')}>
               <h4 className="text-xl font-bold text-text mb-4">高品質影片</h4>
               <p className="text-gray-600">9:16 豎屏動畫影片</p>
             </div>
