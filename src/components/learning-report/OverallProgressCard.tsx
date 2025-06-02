@@ -6,11 +6,11 @@
 'use client';
 
 import React from 'react';
-import { LearningReport } from '../../lib/learning-report-generator';
+import { ExtendedLearningReport } from '../../types/learning-report';
 
 interface OverallProgressCardProps {
-  progress: LearningReport['overallProgress'];
-  period: LearningReport['period'];
+  progress: ExtendedLearningReport['overallProgress'];
+  period: ExtendedLearningReport['period'];
   childName: string;
 }
 
@@ -74,7 +74,7 @@ export const OverallProgressCard: React.FC<OverallProgressCardProps> = ({
 
         <div className="bg-white rounded-xl p-6 text-center shadow-sm">
           <div className="text-3xl font-bold text-purple-600 mb-2">
-            {progress.totalAchievements}
+            {progress.skillsAcquired.length}
           </div>
           <div className="text-sm text-gray-600 mb-1">解鎖成就</div>
           <div className="text-xs text-gray-500">個成就徽章</div>
