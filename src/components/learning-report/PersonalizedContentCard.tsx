@@ -6,10 +6,10 @@
 'use client';
 
 import React from 'react';
-import { LearningReport } from '../../lib/learning-report-generator';
+import { ExtendedLearningReport } from '../../types/learning-report';
 
 interface PersonalizedContentCardProps {
-  content: LearningReport['personalizedContent'];
+  content: ExtendedLearningReport['personalizedContent'];
   childName: string;
 }
 
