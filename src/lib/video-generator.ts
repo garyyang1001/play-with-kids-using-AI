@@ -1,6 +1,6 @@
 /**
- * Video Generator Engine（修正版）
- * 核心影片生成引擎，正確整合 Veo2 API
+ * Video Generator Engine（最終正確版）
+ * 基於最新 Veo2 API 文檔的正確實作
  */
 
 import { GoogleGenAI } from '@google/genai';
@@ -62,7 +62,7 @@ export class VideoGenerator {
   private queueLimit = 10;
 
   constructor() {
-    const apiKey = process.env.GOOGLE_AI_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_AI_API_KEY;
+    const apiKey = process.env.GOOGLE_AI_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_AI_API_KEY || process.env.GEMINI_API_KEY;
     if (!apiKey) {
       throw new Error('Google AI API Key 未設定');
     }
@@ -187,7 +187,7 @@ export class VideoGenerator {
         estimatedTimeRemaining: 120
       });
 
-      // 調用 Veo2 API（正確的方式）
+      // 調用 Veo2 API（使用最新正確的方式）
       const result = await this.callVeo2API(request);
       
       // 更新進度：最終化
@@ -214,23 +214,26 @@ export class VideoGenerator {
   }
 
   /**
-   * 調用 Veo2 API（正確實作）
+   * 調用 Veo2 API（基於最新文檔的正確實作）
    */
   private async callVeo2API(request: VideoGenerationRequest): Promise<any> {
     try {
-      // 正確的 Veo2 API 調用方式
-      const operation = await this.client.models.generateVideos({
+      // 使用正確的 Veo2 API 調用方式
+      let operation = await this.client.models.generateVideos({
         model: 'veo-2.0-generate-001',
         prompt: request.prompt,
         config: {
-          aspectRatio: request.config.aspectRatio as '9:16' | '16:9' | '1:1',
-          personGeneration: request.config.personGeneration as 'dont_allow' | 'allow_adult'
+          numberOfVideos: request.config.numberOfVideos || 1,
+          aspectRatio: request.config.aspectRatio as '16:9' | '9:16' | '1:1',
+          personGeneration: request.config.personGeneration as 'dont_allow' | 'allow_adult',
+          durationSeconds: request.config.durationSeconds || 8
         }
       });
 
-      // 等待操作完成
-      let currentOperation = operation;
-      while (!currentOperation.done) {
+      // 等待操作完成（每10秒檢查一次）
+      while (!operation.done) {
+        console.log(`Video ${operation.name} has not been generated yet. Check again in 10 seconds...`);
+        
         // 更新進度
         this.updateProgress(request.id, {
           status: 'generating',
@@ -239,31 +242,42 @@ export class VideoGenerator {
           estimatedTimeRemaining: 60
         });
 
-        // 等待20秒後檢查狀態
-        await new Promise(resolve => setTimeout(resolve, 20000));
+        // 等待10秒後檢查狀態
+        await new Promise(resolve => setTimeout(resolve, 10000));
         
-        // 獲取操作狀態
-        currentOperation = await this.client.operations.get(currentOperation);
+        // 獲取操作狀態（使用正確的方法）
+        operation = await this.client.operations.getVideosOperation({
+          operation: operation
+        });
       }
 
+      console.log(`Generated ${operation.response?.generatedVideos?.length ?? 0} video(s).`);
+
       // 檢查結果
-      if (currentOperation.response && currentOperation.response.generatedVideos) {
-        const generatedVideo = currentOperation.response.generatedVideos[0];
+      if (operation.response?.generatedVideos && operation.response.generatedVideos.length > 0) {
+        const generatedVideo = operation.response.generatedVideos[0];
         
-        // 下載影片文件
-        const videoFile = await this.client.files.download({ file: generatedVideo.video });
-        
-        return {
-          videoData: videoFile,
-          metadata: {
-            duration: request.config.durationSeconds || 5,
-            aspectRatio: request.config.aspectRatio,
-            fileSize: videoFile.size
-          }
-        };
-      } else {
-        throw new Error('影片生成失敗：無回應數據');
+        if (generatedVideo?.video?.uri) {
+          console.log(`Video has been generated: ${generatedVideo.video.uri}`);
+          
+          // 下載影片文件（使用正確的方式）
+          const apiKey = process.env.GOOGLE_AI_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_AI_API_KEY || process.env.GEMINI_API_KEY;
+          const response = await fetch(`${generatedVideo.video.uri}&key=${apiKey}`);
+          const buffer = await response.arrayBuffer();
+          
+          return {
+            videoData: buffer,
+            videoUri: generatedVideo.video.uri,
+            metadata: {
+              duration: request.config.durationSeconds || 8,
+              aspectRatio: request.config.aspectRatio,
+              fileSize: buffer.byteLength
+            }
+          };
+        }
       }
+      
+      throw new Error('影片生成失敗：無回應數據');
       
     } catch (error) {
       console.error('Veo2 API 調用錯誤:', error);
@@ -301,14 +315,19 @@ export class VideoGenerator {
     // 轉換為 Blob
     return new Promise(resolve => {
       canvas.toBlob(blob => {
-        resolve({
-          videoData: blob,
-          metadata: {
-            duration: request.config.durationSeconds || 5,
-            aspectRatio: request.config.aspectRatio,
-            fileSize: blob?.size || 0
-          }
-        });
+        if (blob) {
+          blob.arrayBuffer().then(buffer => {
+            resolve({
+              videoData: buffer,
+              videoUri: 'mock://demo-video',
+              metadata: {
+                duration: request.config.durationSeconds || 8,
+                aspectRatio: request.config.aspectRatio,
+                fileSize: buffer.byteLength
+              }
+            });
+          });
+        }
       }, 'image/png');
     });
   }
@@ -322,17 +341,9 @@ export class VideoGenerator {
     startTime: number
   ): Promise<VideoGenerationResult> {
     try {
-      let videoBlob: Blob;
-      let videoUrl: string;
-
-      if (apiResult.videoData instanceof Blob) {
-        videoBlob = apiResult.videoData;
-      } else {
-        // 如果是其他格式，轉換為 Blob
-        videoBlob = new Blob([apiResult.videoData], { type: 'video/mp4' });
-      }
-      
-      videoUrl = URL.createObjectURL(videoBlob);
+      // 創建影片 Blob
+      const videoBlob = new Blob([apiResult.videoData], { type: 'video/mp4' });
+      const videoUrl = URL.createObjectURL(videoBlob);
 
       // 評估影片品質
       const qualityScore = await this.evaluateVideoQuality(videoBlob);
