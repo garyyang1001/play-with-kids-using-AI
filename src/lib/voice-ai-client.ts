@@ -169,7 +169,7 @@ export class VoiceAIClient {
    */
   private async establishLiveConnection(): Promise<void> {
     try {
-      const config = {
+      const sessionConfig = {
         responseModalities: [Modality.AUDIO],
         mediaResolution: MediaResolution.MEDIA_RESOLUTION_MEDIUM,
         speechConfig: {
@@ -213,7 +213,7 @@ export class VoiceAIClient {
             this.handleConnectionClose(e);
           },
         },
-        config
+        config: sessionConfig
       });
 
       // 發送初始化訊息
