@@ -17,6 +17,8 @@ export default function CuteVoiceChatPage() {
   const [bearExpression, setBearExpression] = useState('🐻');
   const [currentMessage, setCurrentMessage] = useState('');
   const [conversation, setConversation] = useState<VoiceMessage[]>([]);
+  const [textInput, setTextInput] = useState('');
+  const [showTextInput, setShowTextInput] = useState(false);
 
   // 可愛的模板配置
   const templateConfig = {
@@ -89,6 +91,10 @@ export default function CuteVoiceChatPage() {
         if (message.type === 'assistant') {
           setCurrentMessage(message.content);
           setBearExpression('🐻💬');
+          // 3秒後回到開心表情
+          setTimeout(() => {
+            if (isConnected) setBearExpression('🐻😊');
+          }, 3000);
         }
       });
 
@@ -148,6 +154,38 @@ export default function CuteVoiceChatPage() {
       setCurrentMessage('哎呀～麥克風好像有問題，請檢查權限設定！');
       setBearExpression('🐻🤔');
     }
+  };
+
+  // 處理文字輸入
+  const handleTextSubmit = async () => {
+    if (!textInput.trim() || !voiceClient || !isConnected) return;
+
+    const userMessage: VoiceMessage = {
+      id: Date.now().toString(),
+      type: 'user',
+      content: textInput.trim(),
+      timestamp: Date.now()
+    };
+
+    setConversation(prev => [...prev, userMessage]);
+    setTextInput('');
+    
+    // 模擬AI回應（實際應該調用voiceClient的文字處理方法）
+    setBearExpression('🐻🤔');
+    setCurrentMessage('讓我想想...');
+    
+    // 這裡應該調用實際的AI文字處理
+    setTimeout(() => {
+      const aiMessage: VoiceMessage = {
+        id: (Date.now() + 1).toString(),
+        type: 'assistant', 
+        content: `哇！你說"${textInput.trim()}"真有趣呢！能告訴我更多細節嗎？比如當時的心情或看到的顏色？`,
+        timestamp: Date.now()
+      };
+      setConversation(prev => [...prev, aiMessage]);
+      setCurrentMessage(aiMessage.content);
+      setBearExpression('🐻😊');
+    }, 2000);
   };
 
   const getMicButtonStyle = () => {
@@ -235,25 +273,26 @@ export default function CuteVoiceChatPage() {
           </div>
         </div>
 
-        {/* 麥克風按鈕 */}
+        {/* 輸入控制區域 */}
         <div className="text-center mb-6">
+          {/* 麥克風按鈕 */}
           <button
             onClick={handleMicClick}
             className={`
-              w-24 h-24 rounded-full text-4xl transition-all duration-300 transform hover:scale-105
+              w-24 h-24 rounded-full text-4xl transition-all duration-300 transform hover:scale-105 mb-4
               ${getMicButtonStyle()}
             `}
           >
             {getMicIcon()}
           </button>
           
-          <div className="mt-4 text-gray-600 font-medium">
+          <div className="mb-4 text-gray-600 font-medium">
             {getStatusMessage()}
           </div>
 
           {/* 錄音波形動畫 */}
           {isRecording && (
-            <div className="flex justify-center items-center mt-4 gap-1">
+            <div className="flex justify-center items-center mb-4 gap-1">
               {[...Array(5)].map((_, i) => (
                 <div
                   key={i}
@@ -266,7 +305,39 @@ export default function CuteVoiceChatPage() {
               ))}
             </div>
           )}
+
+          {/* 切換文字輸入按鈕 */}
+          <button
+            onClick={() => setShowTextInput(!showTextInput)}
+            className="bg-white/80 backdrop-blur-sm rounded-full px-4 py-2 text-sm text-gray-600 hover:bg-white transition-all"
+          >
+            {showTextInput ? '🎤 改用語音' : '✏️ 改用文字'}
+          </button>
         </div>
+
+        {/* 文字輸入區域 */}
+        {showTextInput && (
+          <div className="bg-white/90 backdrop-blur-sm rounded-2xl p-4 max-w-md mx-auto mb-6">
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={textInput}
+                onChange={(e) => setTextInput(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && handleTextSubmit()}
+                placeholder="在這裡輸入你想說的話..."
+                className="flex-1 px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-300"
+                disabled={!isConnected}
+              />
+              <button
+                onClick={handleTextSubmit}
+                disabled={!textInput.trim() || !isConnected}
+                className="bg-orange-400 hover:bg-orange-500 text-white px-4 py-2 rounded-lg disabled:bg-gray-300 transition-all"
+              >
+                發送
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* 小提示 */}
         <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-4 max-w-sm mx-auto">
@@ -284,22 +355,58 @@ export default function CuteVoiceChatPage() {
         <div className="absolute bottom-0 left-0 right-0 h-20 bg-gradient-to-t from-white/20 to-transparent pointer-events-none"></div>
       </div>
 
-      {/* 對話記錄（簡化版） */}
-      {conversation.length > 1 && (
-        <div className="fixed top-4 right-4 bg-white/90 backdrop-blur-sm rounded-2xl p-4 max-w-xs shadow-lg z-20">
-          <div className="text-xs text-gray-500 mb-2">對話記錄</div>
-          <div className="space-y-2 max-h-40 overflow-y-auto">
-            {conversation.slice(-3).map((msg, index) => (
-              <div key={index} className="text-xs">
-                <span className={msg.type === 'user' ? 'text-blue-600' : 'text-orange-600'}>
-                  {msg.type === 'user' ? '👤' : '🐻'}:
-                </span>
-                <span className="ml-1 text-gray-700">
-                  {msg.content.slice(0, 30)}
-                  {msg.content.length > 30 && '...'}
-                </span>
+      {/* 對話記錄（改進版） */}
+      {conversation.length > 0 && (
+        <div className="fixed top-4 right-4 bg-white/95 backdrop-blur-sm rounded-2xl p-4 max-w-sm shadow-lg z-20 max-h-96 overflow-hidden">
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-sm font-medium text-gray-700">對話記錄</div>
+            <div className="text-xs text-gray-500">{conversation.length} 條對話</div>
+          </div>
+          
+          <div className="space-y-3 max-h-80 overflow-y-auto">
+            {conversation.map((msg, index) => (
+              <div key={index} className="flex items-start gap-2">
+                <div className="flex-shrink-0 text-lg">
+                  {msg.type === 'user' ? '👤' : '🐻'}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className={`text-xs px-3 py-2 rounded-lg ${
+                    msg.type === 'user' 
+                      ? 'bg-blue-100 text-blue-800' 
+                      : 'bg-orange-100 text-orange-800'
+                  }`}>
+                    <div className="font-medium mb-1">
+                      {msg.type === 'user' ? '你' : '熊寶寶'}
+                    </div>
+                    <div className="break-words">
+                      {msg.content.length > 60 
+                        ? `${msg.content.slice(0, 60)}...` 
+                        : msg.content
+                      }
+                    </div>
+                  </div>
+                  <div className="text-xs text-gray-400 mt-1">
+                    {new Date(msg.timestamp).toLocaleTimeString()}
+                  </div>
+                </div>
               </div>
             ))}
+          </div>
+          
+          {/* 快速操作 */}
+          <div className="mt-3 pt-3 border-t border-gray-200 flex gap-2">
+            <button
+              onClick={() => setConversation([])}
+              className="text-xs px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded-full text-gray-600 transition-all"
+            >
+              清除記錄
+            </button>
+            <button
+              onClick={() => router.push('/learning-report')}
+              className="text-xs px-3 py-1 bg-orange-100 hover:bg-orange-200 rounded-full text-orange-600 transition-all"
+            >
+              查看報告
+            </button>
           </div>
         </div>
       )}
