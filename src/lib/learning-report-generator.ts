@@ -1,4 +1,4 @@
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 export interface LearningSessionData {
   sessionId: string;
@@ -62,7 +62,7 @@ export interface LearningReport {
 }
 
 export class LearningReportGenerator {
-  private client: GoogleGenAI;
+  private client: GoogleGenerativeAI;
   private sessions: LearningSessionData[] = [];
 
   constructor(apiKey?: string) {
@@ -70,7 +70,7 @@ export class LearningReportGenerator {
     if (!key) {
       throw new Error('Google AI API Key 未設定');
     }
-    this.client = new GoogleGenAI({ apiKey: key });
+    this.client = new GoogleGenerativeAI(key);
   }
 
   addSession(session: LearningSessionData): void {
@@ -313,12 +313,10 @@ ${JSON.stringify(sessionSummary, null, 2)}
 `;
 
     try {
-      const response = await this.client.models.generateContent({
-        model: 'gemini-2.0-flash-001',
-        contents: prompt
-      });
-      
-      return response.text;
+      const model = this.client.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      return response.text();
     } catch (error) {
       console.error('生成AI洞察失敗:', error);
       return `根據 ${sessions.length} 次學習記錄，孩子在 Prompt Engineering 方面展現出良好的學習潛力。建議繼續保持規律的親子學習時光，多鼓勵孩子的創意表達，逐步提升描述的豐富度和準確性。`;
