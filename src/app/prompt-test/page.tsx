@@ -165,7 +165,7 @@ export default function PromptEngineeringTestPage() {
     }
   ];
 
-  const useExamplePrompt = (examplePrompt: string) => {
+  const handleExamplePrompt = (examplePrompt: string) => {
     setPrompt(examplePrompt);
     setAnalysisResult(null);
   };
@@ -232,7 +232,7 @@ export default function PromptEngineeringTestPage() {
                     <div
                       key={index}
                       className="border border-gray-200 rounded-lg p-3 cursor-pointer hover:bg-gray-50 transition-colors"
-                      onClick={() => useExamplePrompt(example.prompt)}
+                      onClick={() => handleExamplePrompt(example.prompt)}
                     >
                       <div className="font-medium text-sm text-purple-600 mb-1">
                         {example.title}
@@ -241,7 +241,7 @@ export default function PromptEngineeringTestPage() {
                         {example.description}
                       </div>
                       <div className="text-sm text-gray-800 line-clamp-2">
-                        "{example.prompt}"
+                        &ldquo;{example.prompt}&rdquo;
                       </div>
                     </div>
                   ))}
