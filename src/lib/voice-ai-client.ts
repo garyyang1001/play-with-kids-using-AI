@@ -1,70 +1,107 @@
-import {
-  GoogleGenAI,
-  LiveServerMessage,
-  MediaResolution,
-  Modality,
-  Session,
-} from '@google/genai';
+/**
+ * VoiceAIClient - 語音AI客戶端
+ * 使用 Google Gemini 1.5 Flash 進行文字對話，暫時不支援即時語音
+ * 等待 Google Live API 正式發布後再升級
+ */
+
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import { v4 as uuidv4 } from 'uuid';
-import type {
-  VoiceAIConfig,
-  VoiceMessage,
-  VoiceState,
-  AudioConfig,
-  VoiceAIClientEvents,
-  ConnectionStatus,
-  VoicePromptContext
-} from './types/voice';
+
+export interface VoiceAIConfig {
+  apiKey?: string;
+  model?: string;
+  voice?: string;
+  language?: string;
+  sampleRate?: number;
+}
+
+export interface VoiceMessage {
+  id: string;
+  type: 'user' | 'assistant';
+  content: string;
+  timestamp: number;
+}
+
+export interface VoiceState {
+  isConnected: boolean;
+  isRecording: boolean;
+  isPlaying: boolean;
+  isLoading: boolean;
+  error: string | null;
+  connectionId?: string;
+}
+
+export interface AudioConfig {
+  sampleRate: number;
+  channelCount: number;
+  echoCancellation: boolean;
+  noiseSuppression: boolean;
+  autoGainControl: boolean;
+}
+
+export interface ConnectionStatus {
+  connected: boolean;
+  lastPingTime: number;
+  reconnectAttempts: number;
+  quality: 'excellent' | 'good' | 'poor' | 'disconnected';
+}
+
+export interface VoicePromptContext {
+  templateName: string;
+  learningGoals: string[];
+  currentStep: number;
+}
+
+export interface VoiceAIClientEvents {
+  connected?: () => void;
+  disconnected?: () => void;
+  message?: (message: VoiceMessage) => void;
+  audioReceived?: (audio: ArrayBuffer) => void;
+  error?: (error: Error) => void;
+  stateChanged?: (state: VoiceState) => void;
+}
 
 /**
  * VoiceAIClient - 語音AI客戶端
- * 使用 Google Gemini Live API 進行即時語音對話
- * 根據真正的官方代碼實作
+ * 暫時使用文字對話模式，模擬語音互動體驗
  */
 export class VoiceAIClient {
-  private genAI: GoogleGenAI;
+  private client: GoogleGenerativeAI;
   private config: VoiceAIConfig;
   private state: VoiceState;
   private connectionStatus: ConnectionStatus;
-  private session: Session | null = null;
   private eventListeners: Partial<VoiceAIClientEvents> = {};
   private conversationHistory: VoiceMessage[] = [];
   private sessionId: string;
   private reconnectTimer: NodeJS.Timeout | null = null;
   private maxReconnectAttempts = 5;
   private promptContext: VoicePromptContext | null = null;
-  private responseQueue: LiveServerMessage[] = [];
   private audioContext: AudioContext | null = null;
   private mediaRecorder: MediaRecorder | null = null;
   private audioStream: MediaStream | null = null;
-  private audioParts: string[] = [];
+  private chat: any = null;
 
   constructor(config: VoiceAIConfig) {
-    // 獲取 API Key，優先使用環境變數
+    // 獲取 API Key
     const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY || config.apiKey;
     
     if (!apiKey) {
       throw new Error('未設定 Gemini API Key。請在 .env.local 中設定 NEXT_PUBLIC_GEMINI_API_KEY');
     }
     
-    // 獲取模型名稱，使用官方代碼的正確模型名稱
-    const modelName = process.env.NEXT_PUBLIC_GEMINI_MODEL || config.model || 'models/gemini-2.5-flash-preview-native-audio-dialog';
+    // 使用標準的文字模型
+    const modelName = config.model || 'gemini-1.5-flash';
     
-    // 合併配置，避免重複指定屬性
     this.config = {
-      voice: 'Zephyr',  // 官方代碼使用的語音
+      voice: 'zh-TW',
       language: 'zh-TW',
-      sampleRate: 16000,  // Live API 建議使用 16kHz 輸入
+      sampleRate: 16000,
       ...config,
-      apiKey,  // 明確設定 API Key
-      model: modelName  // 明確設定模型名稱
+      apiKey,
+      model: modelName
     };
     
-    // 根據官方代碼初始化 GoogleGenAI（不需要特殊配置）
-    this.genAI = new GoogleGenAI({
-      apiKey: this.config.apiKey
-    });
-
+    this.client = new GoogleGenerativeAI(this.config.apiKey);
     this.sessionId = uuidv4();
     
     this.state = {
@@ -85,21 +122,34 @@ export class VoiceAIClient {
   }
 
   /**
-   * 初始化語音AI連接
+   * 初始化語音AI連接（模擬）
    */
   async connect(promptContext?: VoicePromptContext): Promise<void> {
     try {
       this.setState({ isLoading: true, error: null });
       this.promptContext = promptContext || null;
 
-      // 初始化音訊上下文
+      // 初始化 Gemini 聊天
+      const model = this.client.getGenerativeModel({ model: this.config.model! });
+      const systemPrompt = this.buildSystemPrompt();
+      
+      this.chat = model.startChat({
+        history: [{
+          role: "user",
+          parts: [{ text: systemPrompt }],
+        }, {
+          role: "model",
+          parts: [{ text: "好的！我是你的AI語音助手，準備開始親子創作對話。請告訴我今天想要創作什麼主題呢？" }],
+        }],
+        generationConfig: {
+          maxOutputTokens: 200,
+          temperature: 0.9,
+        },
+      });
+
+      // 模擬音訊初始化
       await this.initializeAudioContext();
-      
-      // 請求麥克風權限
       await this.requestMicrophonePermission();
-      
-      // 建立與 Gemini Live API 的連接
-      await this.establishLiveConnection();
       
       this.setState({ 
         isConnected: true, 
@@ -112,7 +162,7 @@ export class VoiceAIClient {
       
       this.emit('connected');
       
-      console.log('VoiceAI 連接成功！');
+      console.log('VoiceAI 連接成功！（文字模式）');
       
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : '連接失敗';
@@ -142,7 +192,7 @@ export class VoiceAIClient {
       console.log('音訊上下文初始化成功');
     } catch (error) {
       console.error('音訊上下文初始化失敗:', error);
-      throw new Error('無法初始化音訊系統');
+      // 不拋出錯誤，允許在沒有音訊的情況下繼續
     }
   }
 
@@ -161,95 +211,19 @@ export class VoiceAIClient {
         }
       });
       
-      // 保存音訊流
       this.audioStream = stream;
-      
       console.log('麥克風權限獲取成功');
     } catch (error) {
-      console.error('麥克風權限獲取失敗:', error);
-      throw new Error('無法獲取麥克風權限，請檢查瀏覽器設定');
+      console.warn('麥克風權限獲取失敗，將使用文字輸入模式:', error);
+      // 不拋出錯誤，允許文字模式
     }
-  }
-
-  /**
-   * 建立與 Gemini Live API 的連接
-   * 根據官方代碼的完整配置
-   */
-  private async establishLiveConnection(): Promise<void> {
-    try {
-      // 完全按照官方代碼的配置
-      const sessionConfig = {
-        responseModalities: [Modality.AUDIO],
-        mediaResolution: MediaResolution.MEDIA_RESOLUTION_MEDIUM,
-        speechConfig: {
-          voiceConfig: {
-            prebuiltVoiceConfig: {
-              voiceName: this.config.voice || 'Zephyr',
-            }
-          }
-        },
-        contextWindowCompression: {
-          triggerTokens: '25600',
-          slidingWindow: { targetTokens: '12800' },
-        },
-      };
-
-      console.log('正在連接模型:', this.config.model);
-
-      this.session = await this.genAI.live.connect({
-        model: this.config.model,
-        callbacks: {
-          onopen: () => {
-            console.log('Live API 連接已建立');
-            this.handleConnectionOpen();
-          },
-          onmessage: (message: LiveServerMessage) => {
-            this.responseQueue.push(message);
-            this.handleServerMessage(message);
-          },
-          onerror: (e: ErrorEvent) => {
-            console.error('Live API 錯誤:', e.message);
-            this.handleConnectionError(e);
-          },
-          onclose: (e: CloseEvent) => {
-            console.log('Live API 連接關閉:', e.reason);
-            this.handleConnectionClose(e);
-          },
-        },
-        config: sessionConfig
-      });
-
-      // 發送初始化訊息
-      await this.sendInitialPrompt();
-      
-      console.log('Gemini Live API 連接已建立');
-    } catch (error) {
-      console.error('Gemini Live API 連接失敗:', error);
-      throw new Error(`無法連接到語音AI服務: ${error instanceof Error ? error.message : '未知錯誤'}`);
-    }
-  }
-
-  /**
-   * 發送初始化提示詞
-   */
-  private async sendInitialPrompt(): Promise<void> {
-    if (!this.session) return;
-
-    const systemPrompt = this.buildSystemPrompt();
-    
-    this.session.sendClientContent({
-      turns: [{
-        role: "user",
-        parts: [{ text: systemPrompt }]
-      }]
-    });
   }
 
   /**
    * 建立系統提示詞
    */
   private buildSystemPrompt(): string {
-    const basePrompt = `你是一個專門為親子AI創作設計的語音助手。請用溫暖、親和的語調與家長和孩子對話。
+    const basePrompt = `你是一個專門為親子AI創作設計的助手。請用溫暖、親和的語調與家長和孩子對話。
 
 你的主要任務：
 1. 引導家長和孩子進行創意對話
@@ -257,12 +231,12 @@ export class VoiceAIClient {
 3. 提供即時的優化建議
 4. 鼓勵孩子的創意表達
 
-語音回應要求：
-- 使用自然、溫暖的中文語調
-- 語速適中，方便孩子理解
+回應要求：
+- 使用自然、溫暖的中文
+- 語言簡單易懂，適合孩子理解
 - 適時給予鼓勵和讚美
-- 用簡單詞彙解釋概念
 - 回應長度控制在 1-2 句話內
+- 主動引導對話，提出啟發性問題
 
 請始終保持積極、耐心、鼓勵的態度。`;
 
@@ -279,239 +253,10 @@ export class VoiceAIClient {
   }
 
   /**
-   * 處理連接開啟事件
-   */
-  private handleConnectionOpen(): void {
-    this.setState({ isConnected: true });
-    this.connectionStatus.connected = true;
-    this.connectionStatus.lastPingTime = Date.now();
-  }
-
-  /**
-   * 處理伺服器訊息 - 根據官方代碼的處理方式
-   */
-  private handleServerMessage(message: LiveServerMessage): void {
-    if (message.serverContent?.modelTurn?.parts) {
-      const part = message.serverContent.modelTurn.parts[0];
-
-      // 處理文字回應
-      if (part?.text) {
-        const assistantMessage: VoiceMessage = {
-          id: uuidv4(),
-          type: 'assistant',
-          content: part.text,
-          timestamp: Date.now()
-        };
-        
-        this.conversationHistory.push(assistantMessage);
-        this.emit('message', assistantMessage);
-      }
-
-      // 處理音訊回應 - 按照官方代碼的方式
-      if (part?.inlineData) {
-        this.handleAudioResponse(part.inlineData);
-      }
-    }
-
-    // 檢查對話輪次是否完成
-    if (message.serverContent?.turnComplete) {
-      this.setState({ isLoading: false, isPlaying: false });
-    }
-  }
-
-  /**
-   * 處理音訊回應 - 根據官方代碼優化
-   */
-  private handleAudioResponse(inlineData: any): void {
-    try {
-      this.audioParts.push(inlineData?.data ?? '');
-
-      // 使用官方代碼的音訊處理方式
-      const buffer = this.convertToWav(this.audioParts, inlineData.mimeType ?? '');
-      
-      // 播放音訊
-      this.playAudioResponse(buffer);
-      this.emit('audioReceived', buffer);
-    } catch (error) {
-      console.error('音訊回應處理失敗:', error);
-    }
-  }
-
-  /**
-   * 轉換為 WAV 格式 - 根據官方代碼
-   */
-  private convertToWav(rawData: string[], mimeType: string): ArrayBuffer {
-    const options = this.parseMimeType(mimeType);
-    
-    // 計算總數據長度
-    let totalLength = 0;
-    const decodedData: Uint8Array[] = [];
-    
-    for (const data of rawData) {
-      const decoded = this.base64ToUint8Array(data);
-      decodedData.push(decoded);
-      totalLength += decoded.length;
-    }
-    
-    const wavHeader = this.createWavHeader(totalLength, options);
-    
-    // 合併 WAV 標頭和音訊數據
-    const result = new Uint8Array(wavHeader.length + totalLength);
-    result.set(wavHeader, 0);
-    
-    let offset = wavHeader.length;
-    for (const data of decodedData) {
-      result.set(data, offset);
-      offset += data.length;
-    }
-    
-    return result.buffer;
-  }
-
-  /**
-   * Base64 轉 Uint8Array（瀏覽器相容）
-   */
-  private base64ToUint8Array(base64: string): Uint8Array {
-    const binaryString = atob(base64);
-    const bytes = new Uint8Array(binaryString.length);
-    
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
-    }
-    
-    return bytes;
-  }
-
-  /**
-   * 解析 MIME 類型 - 根據官方代碼
-   */
-  private parseMimeType(mimeType: string) {
-    const [fileType, ...params] = mimeType.split(';').map(s => s.trim());
-    const [_, format] = fileType.split('/');
-
-    const options: any = {
-      numChannels: 1,
-      bitsPerSample: 16,
-      sampleRate: 24000,  // 預設值，會從 mimeType 參數中覆蓋
-    };
-
-    if (format && format.startsWith('L')) {
-      const bits = parseInt(format.slice(1), 10);
-      if (!isNaN(bits)) {
-        options.bitsPerSample = bits;
-      }
-    }
-
-    for (const param of params) {
-      const [key, value] = param.split('=').map(s => s.trim());
-      if (key === 'rate') {
-        options.sampleRate = parseInt(value, 10);
-      }
-    }
-
-    return options;
-  }
-
-  /**
-   * 創建 WAV 標頭 - 根據官方代碼
-   */
-  private createWavHeader(dataLength: number, options: any): Uint8Array {
-    const {
-      numChannels,
-      sampleRate,
-      bitsPerSample,
-    } = options;
-
-    const byteRate = sampleRate * numChannels * bitsPerSample / 8;
-    const blockAlign = numChannels * bitsPerSample / 8;
-    const buffer = new ArrayBuffer(44);
-    const view = new DataView(buffer);
-
-    // RIFF header
-    this.writeString(view, 0, 'RIFF');
-    view.setUint32(4, 36 + dataLength, true);
-    this.writeString(view, 8, 'WAVE');
-    
-    // fmt chunk
-    this.writeString(view, 12, 'fmt ');
-    view.setUint32(16, 16, true);
-    view.setUint16(20, 1, true);
-    view.setUint16(22, numChannels, true);
-    view.setUint32(24, sampleRate, true);
-    view.setUint32(28, byteRate, true);
-    view.setUint16(32, blockAlign, true);
-    view.setUint16(34, bitsPerSample, true);
-    
-    // data chunk
-    this.writeString(view, 36, 'data');
-    view.setUint32(40, dataLength, true);
-
-    return new Uint8Array(buffer);
-  }
-
-  /**
-   * 寫入字符串到 DataView
-   */
-  private writeString(view: DataView, offset: number, string: string): void {
-    for (let i = 0; i < string.length; i++) {
-      view.setUint8(offset + i, string.charCodeAt(i));
-    }
-  }
-
-  /**
-   * 播放音訊回應
-   */
-  private async playAudioResponse(audioBuffer: ArrayBuffer): Promise<void> {
-    if (!this.audioContext) return;
-
-    try {
-      this.setState({ isPlaying: true });
-      
-      const audioBufferSource = this.audioContext.createBufferSource();
-      const decodedBuffer = await this.audioContext.decodeAudioData(audioBuffer.slice(0));
-      
-      audioBufferSource.buffer = decodedBuffer;
-      audioBufferSource.connect(this.audioContext.destination);
-      
-      audioBufferSource.onended = () => {
-        this.setState({ isPlaying: false });
-      };
-      
-      audioBufferSource.start();
-    } catch (error) {
-      console.error('音訊播放失敗:', error);
-      this.setState({ isPlaying: false });
-    }
-  }
-
-  /**
-   * 處理連接錯誤
-   */
-  private handleConnectionError(error: ErrorEvent): void {
-    console.error('Live API 連接錯誤:', error);
-    this.setState({ error: '語音連接發生錯誤' });
-    this.emit('error', new Error(error.message));
-  }
-
-  /**
-   * 處理連接關閉
-   */
-  private handleConnectionClose(event: CloseEvent): void {
-    this.setState({ isConnected: false });
-    this.connectionStatus.connected = false;
-    this.emit('disconnected');
-    
-    // 如果不是正常關閉，嘗試重連
-    if (event.code !== 1000) {
-      this.attemptReconnect();
-    }
-  }
-
-  /**
-   * 開始錄音
+   * 開始錄音（模擬）
    */
   async startRecording(): Promise<void> {
-    if (!this.state.isConnected || !this.session) {
+    if (!this.state.isConnected) {
       throw new Error('請先連接語音AI服務');
     }
 
@@ -521,67 +266,14 @@ export class VoiceAIClient {
     }
 
     try {
-      if (!this.audioStream) {
-        this.audioStream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            sampleRate: this.config.sampleRate,
-            channelCount: 1,
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true
-          }
-        });
-      }
-
-      // 重置音訊部分
-      this.audioParts = [];
-
-      // 創建 MediaRecorder
-      this.mediaRecorder = new MediaRecorder(this.audioStream, {
-        mimeType: 'audio/webm;codecs=opus'
-      });
-
-      const audioChunks: Blob[] = [];
-
-      this.mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunks.push(event.data);
-        }
-      };
-
-      // 錄音結束時處理音訊
-      this.mediaRecorder.onstop = async () => {
-        try {
-          const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-          const arrayBuffer = await audioBlob.arrayBuffer();
-          
-          // 將音訊轉換為 base64 並發送到 Live API
-          const base64Audio = this.arrayBufferToBase64(arrayBuffer);
-          
-          if (this.session) {
-            // 使用 sendRealtimeInput 發送音訊，按照官方代碼格式
-            this.session.sendRealtimeInput({
-              audio: {
-                data: base64Audio,
-                mimeType: "audio/pcm;rate=16000"
-              }
-            });
-          }
-          
-        } catch (error) {
-          console.error('音訊處理失敗:', error);
-          this.setState({ error: '音訊處理失敗' });
-        }
-      };
-
-      this.mediaRecorder.start(100);
       this.setState({ isRecording: true });
+      console.log('開始錄音（模擬）');
       
-      console.log('開始錄音');
+      // 模擬錄音狀態，實際上等待用戶輸入文字
       
     } catch (error) {
       console.error('錄音失敗:', error);
-      this.setState({ error: '錄音失敗，請檢查麥克風設定' });
+      this.setState({ error: '錄音失敗，請使用文字輸入' });
       throw error;
     }
   }
@@ -590,25 +282,79 @@ export class VoiceAIClient {
    * 停止錄音
    */
   stopRecording(): void {
-    if (!this.state.isRecording || !this.mediaRecorder) {
+    if (!this.state.isRecording) {
       return;
     }
 
-    this.mediaRecorder.stop();
-    this.setState({ isRecording: false, isLoading: true });
-    console.log('停止錄音');
+    this.setState({ isRecording: false });
+    console.log('停止錄音（模擬）');
   }
 
   /**
-   * 將 ArrayBuffer 轉換為 Base64
+   * 發送文字訊息（代替語音）
    */
-  private arrayBufferToBase64(buffer: ArrayBuffer): string {
-    const bytes = new Uint8Array(buffer);
-    let binary = '';
-    for (let i = 0; i < bytes.byteLength; i++) {
-      binary += String.fromCharCode(bytes[i]);
+  async sendTextMessage(text: string): Promise<void> {
+    if (!this.state.isConnected || !this.chat) {
+      throw new Error('請先連接語音AI服務');
     }
-    return btoa(binary);
+
+    try {
+      this.setState({ isLoading: true });
+
+      // 添加用戶訊息到歷史
+      const userMessage: VoiceMessage = {
+        id: uuidv4(),
+        type: 'user',
+        content: text,
+        timestamp: Date.now()
+      };
+      
+      this.conversationHistory.push(userMessage);
+      this.emit('message', userMessage);
+
+      // 發送到 Gemini
+      const result = await this.chat.sendMessage(text);
+      const response = await result.response;
+      const responseText = response.text();
+
+      // 添加助手回應到歷史
+      const assistantMessage: VoiceMessage = {
+        id: uuidv4(),
+        type: 'assistant',
+        content: responseText,
+        timestamp: Date.now()
+      };
+      
+      this.conversationHistory.push(assistantMessage);
+      this.emit('message', assistantMessage);
+
+      // 模擬語音播放
+      this.simulateAudioPlayback(responseText);
+
+      this.setState({ isLoading: false });
+      
+    } catch (error) {
+      console.error('發送訊息失敗:', error);
+      this.setState({ 
+        isLoading: false, 
+        error: '發送訊息失敗，請重試' 
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * 模擬語音播放
+   */
+  private simulateAudioPlayback(text: string): void {
+    this.setState({ isPlaying: true });
+    
+    // 根據文字長度計算播放時間
+    const playbackDuration = Math.max(1000, text.length * 100);
+    
+    setTimeout(() => {
+      this.setState({ isPlaying: false });
+    }, playbackDuration);
   }
 
   /**
@@ -644,12 +390,6 @@ export class VoiceAIClient {
       this.stopRecording();
     }
 
-    // 關閉 Live API 連接
-    if (this.session) {
-      this.session.close();
-      this.session = null;
-    }
-
     // 停止音訊流
     if (this.audioStream) {
       this.audioStream.getTracks().forEach(track => track.stop());
@@ -667,6 +407,9 @@ export class VoiceAIClient {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
+
+    // 清理聊天實例
+    this.chat = null;
 
     this.setState({
       isConnected: false,
