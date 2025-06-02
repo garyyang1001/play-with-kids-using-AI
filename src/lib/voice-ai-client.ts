@@ -1,10 +1,9 @@
 /**
- * VoiceAIClient - 語音AI客戶端
- * 使用 Google Gemini 1.5 Flash 進行文字對話，暫時不支援即時語音
- * 等待 Google Live API 正式發布後再升級
+ * VoiceAIClient - 正確的 Google Live API 實現
+ * 基於官方 Live API WebSocket 文檔
+ * https://ai.google.dev/api/live
  */
 
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { v4 as uuidv4 } from 'uuid';
 
 export interface VoiceAIConfig {
@@ -20,6 +19,7 @@ export interface VoiceMessage {
   type: 'user' | 'assistant';
   content: string;
   timestamp: number;
+  audioData?: ArrayBuffer;
 }
 
 export interface VoiceState {
@@ -29,14 +29,6 @@ export interface VoiceState {
   isLoading: boolean;
   error: string | null;
   connectionId?: string;
-}
-
-export interface AudioConfig {
-  sampleRate: number;
-  channelCount: number;
-  echoCancellation: boolean;
-  noiseSuppression: boolean;
-  autoGainControl: boolean;
 }
 
 export interface ConnectionStatus {
@@ -59,14 +51,13 @@ export interface VoiceAIClientEvents {
   audioReceived?: (audio: ArrayBuffer) => void;
   error?: (error: Error) => void;
   stateChanged?: (state: VoiceState) => void;
+  transcription?: (text: string) => void;
 }
 
 /**
- * VoiceAIClient - 語音AI客戶端
- * 暫時使用文字對話模式，模擬語音互動體驗
+ * VoiceAIClient - 正確的 Live API 實現
  */
 export class VoiceAIClient {
-  private client: GoogleGenerativeAI;
   private config: VoiceAIConfig;
   private state: VoiceState;
   private connectionStatus: ConnectionStatus;
@@ -76,32 +67,33 @@ export class VoiceAIClient {
   private reconnectTimer: NodeJS.Timeout | null = null;
   private maxReconnectAttempts = 5;
   private promptContext: VoicePromptContext | null = null;
+  
+  // WebSocket 相關
+  private websocket: WebSocket | null = null;
+  private isSetupComplete = false;
+  
+  // 音訊相關
   private audioContext: AudioContext | null = null;
   private mediaRecorder: MediaRecorder | null = null;
   private audioStream: MediaStream | null = null;
-  private chat: any = null;
+  private audioChunks: Blob[] = [];
 
   constructor(config: VoiceAIConfig) {
-    // 獲取 API Key
     const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY || config.apiKey;
     
     if (!apiKey) {
       throw new Error('未設定 Gemini API Key。請在 .env.local 中設定 NEXT_PUBLIC_GEMINI_API_KEY');
     }
     
-    // 使用標準的文字模型
-    const modelName = config.model || 'gemini-1.5-flash';
-    
     this.config = {
-      voice: 'zh-TW',
+      voice: 'Puck', // 根據文檔的語音選項
       language: 'zh-TW',
       sampleRate: 16000,
+      model: 'models/gemini-2.0-flash-exp', // 支援 Live API 的模型
       ...config,
-      apiKey,
-      model: modelName
+      apiKey
     };
     
-    this.client = new GoogleGenerativeAI(this.config.apiKey);
     this.sessionId = uuidv4();
     
     this.state = {
@@ -122,47 +114,19 @@ export class VoiceAIClient {
   }
 
   /**
-   * 初始化語音AI連接（模擬）
+   * 連接到 Live API
    */
   async connect(promptContext?: VoicePromptContext): Promise<void> {
     try {
       this.setState({ isLoading: true, error: null });
       this.promptContext = promptContext || null;
 
-      // 初始化 Gemini 聊天
-      const model = this.client.getGenerativeModel({ model: this.config.model! });
-      const systemPrompt = this.buildSystemPrompt();
-      
-      this.chat = model.startChat({
-        history: [{
-          role: "user",
-          parts: [{ text: systemPrompt }],
-        }, {
-          role: "model",
-          parts: [{ text: "好的！我是你的AI語音助手，準備開始親子創作對話。請告訴我今天想要創作什麼主題呢？" }],
-        }],
-        generationConfig: {
-          maxOutputTokens: 200,
-          temperature: 0.9,
-        },
-      });
-
-      // 模擬音訊初始化
+      // 初始化音訊
       await this.initializeAudioContext();
       await this.requestMicrophonePermission();
       
-      this.setState({ 
-        isConnected: true, 
-        isLoading: false,
-        connectionId: this.sessionId
-      });
-      
-      this.connectionStatus.connected = true;
-      this.connectionStatus.lastPingTime = Date.now();
-      
-      this.emit('connected');
-      
-      console.log('VoiceAI 連接成功！（文字模式）');
+      // 建立 WebSocket 連接
+      await this.establishWebSocketConnection();
       
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : '連接失敗';
@@ -173,6 +137,235 @@ export class VoiceAIClient {
       });
       this.emit('error', new Error(errorMessage));
       throw error;
+    }
+  }
+
+  /**
+   * 建立 WebSocket 連接
+   */
+  private async establishWebSocketConnection(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      try {
+        // Live API WebSocket 端點
+        const wsUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${this.config.apiKey}`;
+        
+        this.websocket = new WebSocket(wsUrl);
+        
+        this.websocket.onopen = () => {
+          console.log('WebSocket 連接已建立');
+          this.sendSetupMessage();
+        };
+        
+        this.websocket.onmessage = (event) => {
+          this.handleServerMessage(event.data);
+        };
+        
+        this.websocket.onerror = (error) => {
+          console.error('WebSocket 錯誤:', error);
+          this.handleConnectionError(new Error('WebSocket 連接錯誤'));
+          reject(error);
+        };
+        
+        this.websocket.onclose = (event) => {
+          console.log('WebSocket 連接關閉:', event.code, event.reason);
+          this.handleConnectionClose(event);
+        };
+
+        // 設定連接超時
+        setTimeout(() => {
+          if (!this.isSetupComplete) {
+            reject(new Error('連接超時'));
+          } else {
+            resolve();
+          }
+        }, 10000);
+        
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }
+
+  /**
+   * 發送設定訊息
+   */
+  private sendSetupMessage(): void {
+    if (!this.websocket) return;
+
+    const setupMessage = {
+      setup: {
+        model: this.config.model,
+        generationConfig: {
+          responseModalities: ["AUDIO"],
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: {
+                voiceName: this.config.voice
+              }
+            }
+          }
+        },
+        systemInstruction: {
+          parts: [{
+            text: this.buildSystemPrompt()
+          }]
+        }
+      }
+    };
+
+    console.log('發送設定訊息:', setupMessage);
+    this.websocket.send(JSON.stringify(setupMessage));
+  }
+
+  /**
+   * 建立系統提示詞
+   */
+  private buildSystemPrompt(): string {
+    const basePrompt = `你是一個專門為親子AI創作設計的語音助手。請用溫暖、親和的語調與家長和孩子對話。
+
+你的主要任務：
+1. 引導家長和孩子進行創意對話
+2. 教授簡單的 Prompt Engineering 技巧
+3. 提供即時的優化建議
+4. 鼓勵孩子的創意表達
+
+語音回應要求：
+- 使用自然、溫暖的中文語調
+- 語速適中，方便孩子理解
+- 適時給予鼓勵和讚美
+- 用簡單詞彙解釋概念
+- 回應長度控制在 1-2 句話內
+
+請始終保持積極、耐心、鼓勵的態度。`;
+
+    if (this.promptContext) {
+      return `${basePrompt}\n\n當前創作情境：
+- 模板：${this.promptContext.templateName}
+- 學習目標：${this.promptContext.learningGoals.join(', ')}
+- 對話階段：第 ${this.promptContext.currentStep} 步
+
+請根據這個情境引導對話，並適時提供 Prompt 優化建議。`;
+    }
+
+    return basePrompt;
+  }
+
+  /**
+   * 處理伺服器訊息
+   */
+  private handleServerMessage(data: string): void {
+    try {
+      const message = JSON.parse(data);
+      console.log('收到伺服器訊息:', message);
+
+      if (message.setupComplete) {
+        this.isSetupComplete = true;
+        this.setState({ 
+          isConnected: true, 
+          isLoading: false,
+          connectionId: this.sessionId
+        });
+        this.connectionStatus.connected = true;
+        this.connectionStatus.lastPingTime = Date.now();
+        this.emit('connected');
+        console.log('Live API 設定完成');
+      }
+
+      if (message.serverContent) {
+        this.handleServerContent(message.serverContent);
+      }
+
+    } catch (error) {
+      console.error('解析伺服器訊息失敗:', error);
+    }
+  }
+
+  /**
+   * 處理伺服器內容
+   */
+  private handleServerContent(serverContent: any): void {
+    // 處理模型回應
+    if (serverContent.modelTurn?.parts) {
+      for (const part of serverContent.modelTurn.parts) {
+        // 處理文字回應
+        if (part.text) {
+          const assistantMessage: VoiceMessage = {
+            id: uuidv4(),
+            type: 'assistant',
+            content: part.text,
+            timestamp: Date.now()
+          };
+          
+          this.conversationHistory.push(assistantMessage);
+          this.emit('message', assistantMessage);
+        }
+
+        // 處理音訊回應
+        if (part.inlineData) {
+          this.handleAudioResponse(part.inlineData);
+        }
+      }
+    }
+
+    // 處理轉錄
+    if (serverContent.inputTranscription) {
+      this.emit('transcription', serverContent.inputTranscription.text);
+    }
+
+    // 檢查輪次完成
+    if (serverContent.turnComplete) {
+      this.setState({ isLoading: false, isPlaying: false });
+    }
+  }
+
+  /**
+   * 處理音訊回應
+   */
+  private handleAudioResponse(inlineData: any): void {
+    try {
+      const audioData = this.base64ToArrayBuffer(inlineData.data);
+      this.playAudioResponse(audioData);
+      this.emit('audioReceived', audioData);
+    } catch (error) {
+      console.error('音訊回應處理失敗:', error);
+    }
+  }
+
+  /**
+   * Base64 轉 ArrayBuffer
+   */
+  private base64ToArrayBuffer(base64: string): ArrayBuffer {
+    const binaryString = atob(base64);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes.buffer;
+  }
+
+  /**
+   * 播放音訊回應
+   */
+  private async playAudioResponse(audioBuffer: ArrayBuffer): Promise<void> {
+    if (!this.audioContext) return;
+
+    try {
+      this.setState({ isPlaying: true });
+      
+      const audioBufferSource = this.audioContext.createBufferSource();
+      const decodedBuffer = await this.audioContext.decodeAudioData(audioBuffer.slice(0));
+      
+      audioBufferSource.buffer = decodedBuffer;
+      audioBufferSource.connect(this.audioContext.destination);
+      
+      audioBufferSource.onended = () => {
+        this.setState({ isPlaying: false });
+      };
+      
+      audioBufferSource.start();
+    } catch (error) {
+      console.error('音訊播放失敗:', error);
+      this.setState({ isPlaying: false });
     }
   }
 
@@ -192,7 +385,7 @@ export class VoiceAIClient {
       console.log('音訊上下文初始化成功');
     } catch (error) {
       console.error('音訊上下文初始化失敗:', error);
-      // 不拋出錯誤，允許在沒有音訊的情況下繼續
+      throw new Error('無法初始化音訊系統');
     }
   }
 
@@ -214,49 +407,16 @@ export class VoiceAIClient {
       this.audioStream = stream;
       console.log('麥克風權限獲取成功');
     } catch (error) {
-      console.warn('麥克風權限獲取失敗，將使用文字輸入模式:', error);
-      // 不拋出錯誤，允許文字模式
+      console.error('麥克風權限獲取失敗:', error);
+      throw new Error('無法獲取麥克風權限，請檢查瀏覽器設定');
     }
   }
 
   /**
-   * 建立系統提示詞
-   */
-  private buildSystemPrompt(): string {
-    const basePrompt = `你是一個專門為親子AI創作設計的助手。請用溫暖、親和的語調與家長和孩子對話。
-
-你的主要任務：
-1. 引導家長和孩子進行創意對話
-2. 教授簡單的 Prompt Engineering 技巧
-3. 提供即時的優化建議
-4. 鼓勵孩子的創意表達
-
-回應要求：
-- 使用自然、溫暖的中文
-- 語言簡單易懂，適合孩子理解
-- 適時給予鼓勵和讚美
-- 回應長度控制在 1-2 句話內
-- 主動引導對話，提出啟發性問題
-
-請始終保持積極、耐心、鼓勵的態度。`;
-
-    if (this.promptContext) {
-      return `${basePrompt}\n\n當前創作情境：
-- 模板：${this.promptContext.templateName}
-- 學習目標：${this.promptContext.learningGoals.join(', ')}
-- 對話階段：第 ${this.promptContext.currentStep} 步
-
-請根據這個情境引導對話，並適時提供 Prompt 優化建議。`;
-    }
-
-    return basePrompt;
-  }
-
-  /**
-   * 開始錄音（模擬）
+   * 開始錄音
    */
   async startRecording(): Promise<void> {
-    if (!this.state.isConnected) {
+    if (!this.state.isConnected || !this.websocket) {
       throw new Error('請先連接語音AI服務');
     }
 
@@ -266,14 +426,35 @@ export class VoiceAIClient {
     }
 
     try {
+      if (!this.audioStream) {
+        await this.requestMicrophonePermission();
+      }
+
+      this.audioChunks = [];
+
+      // 創建 MediaRecorder
+      this.mediaRecorder = new MediaRecorder(this.audioStream!, {
+        mimeType: 'audio/webm;codecs=opus'
+      });
+
+      this.mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          this.audioChunks.push(event.data);
+        }
+      };
+
+      this.mediaRecorder.onstop = async () => {
+        await this.sendAudioToServer();
+      };
+
+      this.mediaRecorder.start(100); // 100ms 間隔
       this.setState({ isRecording: true });
-      console.log('開始錄音（模擬）');
       
-      // 模擬錄音狀態，實際上等待用戶輸入文字
+      console.log('開始錄音');
       
     } catch (error) {
       console.error('錄音失敗:', error);
-      this.setState({ error: '錄音失敗，請使用文字輸入' });
+      this.setState({ error: '錄音失敗，請檢查麥克風設定' });
       throw error;
     }
   }
@@ -282,79 +463,90 @@ export class VoiceAIClient {
    * 停止錄音
    */
   stopRecording(): void {
-    if (!this.state.isRecording) {
+    if (!this.state.isRecording || !this.mediaRecorder) {
       return;
     }
 
-    this.setState({ isRecording: false });
-    console.log('停止錄音（模擬）');
+    this.mediaRecorder.stop();
+    this.setState({ isRecording: false, isLoading: true });
+    console.log('停止錄音');
   }
 
   /**
-   * 發送文字訊息（代替語音）
+   * 發送音訊到伺服器
    */
-  async sendTextMessage(text: string): Promise<void> {
-    if (!this.state.isConnected || !this.chat) {
-      throw new Error('請先連接語音AI服務');
-    }
+  private async sendAudioToServer(): Promise<void> {
+    if (!this.websocket || this.audioChunks.length === 0) return;
 
     try {
-      this.setState({ isLoading: true });
+      const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
+      const arrayBuffer = await audioBlob.arrayBuffer();
+      const base64Audio = this.arrayBufferToBase64(arrayBuffer);
+
+      const realtimeInputMessage = {
+        realtimeInput: {
+          mediaChunks: [{
+            mimeType: "audio/pcm;rate=16000",
+            data: base64Audio
+          }]
+        }
+      };
+
+      console.log('發送音訊數據');
+      this.websocket.send(JSON.stringify(realtimeInputMessage));
 
       // 添加用戶訊息到歷史
       const userMessage: VoiceMessage = {
         id: uuidv4(),
         type: 'user',
-        content: text,
-        timestamp: Date.now()
+        content: '(語音輸入)',
+        timestamp: Date.now(),
+        audioData: arrayBuffer
       };
       
       this.conversationHistory.push(userMessage);
       this.emit('message', userMessage);
 
-      // 發送到 Gemini
-      const result = await this.chat.sendMessage(text);
-      const response = await result.response;
-      const responseText = response.text();
-
-      // 添加助手回應到歷史
-      const assistantMessage: VoiceMessage = {
-        id: uuidv4(),
-        type: 'assistant',
-        content: responseText,
-        timestamp: Date.now()
-      };
-      
-      this.conversationHistory.push(assistantMessage);
-      this.emit('message', assistantMessage);
-
-      // 模擬語音播放
-      this.simulateAudioPlayback(responseText);
-
-      this.setState({ isLoading: false });
-      
     } catch (error) {
-      console.error('發送訊息失敗:', error);
-      this.setState({ 
-        isLoading: false, 
-        error: '發送訊息失敗，請重試' 
-      });
-      throw error;
+      console.error('發送音訊失敗:', error);
+      this.setState({ error: '音訊發送失敗' });
     }
   }
 
   /**
-   * 模擬語音播放
+   * ArrayBuffer 轉 Base64
    */
-  private simulateAudioPlayback(text: string): void {
-    this.setState({ isPlaying: true });
+  private arrayBufferToBase64(buffer: ArrayBuffer): string {
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    for (let i = 0; i < bytes.byteLength; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
+  }
+
+  /**
+   * 處理連接錯誤
+   */
+  private handleConnectionError(error: Error): void {
+    console.error('連接錯誤:', error);
+    this.setState({ error: error.message });
+    this.emit('error', error);
+  }
+
+  /**
+   * 處理連接關閉
+   */
+  private handleConnectionClose(event: CloseEvent): void {
+    this.setState({ isConnected: false });
+    this.connectionStatus.connected = false;
+    this.isSetupComplete = false;
+    this.emit('disconnected');
     
-    // 根據文字長度計算播放時間
-    const playbackDuration = Math.max(1000, text.length * 100);
-    
-    setTimeout(() => {
-      this.setState({ isPlaying: false });
-    }, playbackDuration);
+    // 如果不是正常關閉，嘗試重連
+    if (event.code !== 1000) {
+      this.attemptReconnect();
+    }
   }
 
   /**
@@ -390,6 +582,12 @@ export class VoiceAIClient {
       this.stopRecording();
     }
 
+    // 關閉 WebSocket
+    if (this.websocket) {
+      this.websocket.close();
+      this.websocket = null;
+    }
+
     // 停止音訊流
     if (this.audioStream) {
       this.audioStream.getTracks().forEach(track => track.stop());
@@ -408,9 +606,6 @@ export class VoiceAIClient {
       this.reconnectTimer = null;
     }
 
-    // 清理聊天實例
-    this.chat = null;
-
     this.setState({
       isConnected: false,
       isRecording: false,
@@ -420,6 +615,7 @@ export class VoiceAIClient {
     });
 
     this.connectionStatus.connected = false;
+    this.isSetupComplete = false;
     this.emit('disconnected');
     
     console.log('VoiceAI 連接已斷開');
