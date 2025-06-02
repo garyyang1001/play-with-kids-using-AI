@@ -6,11 +6,11 @@
 'use client';
 
 import React, { useState } from 'react';
-import { LearningReport } from '../../lib/learning-report-generator';
+import { ExtendedLearningReport } from '../../types/learning-report';
 
 interface AchievementsGalleryProps {
-  achievements: LearningReport['achievements'];
-  overallProgress: LearningReport['overallProgress'];
+  achievements: ExtendedLearningReport['achievements'];
+  overallProgress: ExtendedLearningReport['overallProgress'];
 }
 
 export const AchievementsGallery: React.FC<AchievementsGalleryProps> = ({
