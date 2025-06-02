@@ -1,272 +1,308 @@
-'use client'
+'use client';
 
-import { useSearchParams, useRouter } from 'next/navigation'
-import { useState, useEffect } from 'react'
-import VoiceChatInterface from '@/components/voice-chat/VoiceChatInterface'
-import type { VoiceMessage } from '@/lib/types/voice'
+import { useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { VoiceAIClient } from '@/lib/voice-ai-client';
+import type { VoiceMessage, VoiceState } from '@/lib/types/voice';
 
-interface Template {
-  id: string
-  name: string
-  emoji: string
-  description: string
-  promptHints: string[]
-  learningTips: string[]
-}
+export default function CuteVoiceChatPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const template = searchParams.get('template') || 'daily-life';
+  
+  const [voiceClient, setVoiceClient] = useState<VoiceAIClient | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [bearExpression, setBearExpression] = useState('🐻');
+  const [currentMessage, setCurrentMessage] = useState('');
+  const [conversation, setConversation] = useState<VoiceMessage[]>([]);
 
-const templates: Record<string, Template> = {
-  'daily-life': {
-    id: 'daily-life',
-    name: '我的一天',
-    emoji: '🌅',
-    description: '記錄日常生活，學習時間順序和場景描述',
-    promptHints: [
-      '試著描述時間：「早上、中午、晚上」',
-      '加入感官描述：「聽到、看到、聞到」',
-      '描述你的感受：「開心、興奮、期待」'
-    ],
-    learningTips: [
-      '鼓勵孩子按時間順序描述',
-      '引導使用豐富的形容詞',
-      '讚美具體的場景描述'
-    ]
-  },
-  'adventure': {
-    id: 'adventure',
-    name: '夢想冒險',
-    emoji: '🚀',
-    description: '創造想像中的冒險故事，培養創意思維',
-    promptHints: [
-      '設計你的英雄角色：「勇敢的、聰明的」',
-      '描述冒險場景：「神秘的森林、太空基地」',
-      '創造有趣的情節：「遇到困難、解決問題」'
-    ],
-    learningTips: [
-      '鼓勵大膽的想像力',
-      '引導邏輯性的故事發展',
-      '讚美創意的角色設定'
-    ]
-  },
-  'animal-friend': {
-    id: 'animal-friend',
-    name: '動物朋友',
-    emoji: '🐼',
-    description: '設計可愛的動物角色，學習個性描述',
-    promptHints: [
-      '描述動物的外貌：「毛茸茸的、彩色的」',
-      '設計動物的個性：「調皮的、溫柔的」',
-      '想像互動場景：「一起玩耍、分享食物」'
-    ],
-    learningTips: [
-      '引導觀察動物特徵',
-      '鼓勵賦予動物個性',
-      '讚美創意的互動想像'
-    ]
-  }
-}
+  // 可愛的模板配置
+  const templateConfig = {
+    'daily-life': {
+      emoji: '🏠',
+      title: '我的一天',
+      welcomeMessage: '哈囉小朋友！我是熊寶寶！今天想和我分享什麼有趣的事情呢？告訴我你今天做了什麼吧～',
+      color: 'from-orange-300 to-orange-500',
+      bgColor: 'bg-orange-50'
+    },
+    'adventure': {
+      emoji: '🚀', 
+      title: '夢想冒險',
+      welcomeMessage: '嗨～我是愛冒險的熊寶寶！準備好一起踏上精彩的冒險旅程了嗎？告訴我你想要什麼樣的冒險故事！',
+      color: 'from-blue-300 to-blue-500',
+      bgColor: 'bg-blue-50'
+    },
+    'animal-friend': {
+      emoji: '🐾',
+      title: '動物朋友', 
+      welcomeMessage: '哇～我是熊寶寶！我們一起創造一個可愛的動物朋友吧！你最喜歡什麼動物呢？',
+      color: 'from-green-300 to-green-500',
+      bgColor: 'bg-green-50'
+    }
+  };
 
-export default function VoiceChat() {
-  const searchParams = useSearchParams()
-  const router = useRouter()
-  const [templateId, setTemplateId] = useState<string>('daily-life')
-  const [template, setTemplate] = useState<Template>(templates['daily-life'])
-  const [isLoading, setIsLoading] = useState(true)
+  const currentTemplate = templateConfig[template as keyof typeof templateConfig];
 
+  // 初始化語音客戶端
   useEffect(() => {
-    const templateParam = searchParams.get('template') || 'daily-life'
-    setTemplateId(templateParam)
-    setTemplate(templates[templateParam] || templates['daily-life'])
-    setIsLoading(false)
-  }, [searchParams])
+    initializeVoiceClient();
+  }, []);
 
-  const handleConversationComplete = (messages: VoiceMessage[]) => {
-    console.log('對話完成，消息數量:', messages.length)
-    alert(`對話完成！\n\n共進行了 ${messages.length} 次交流\n\n下一步：\n• Prompt 優化分析\n• 影片生成準備\n• 學習成果總結\n\n(這些功能將在後續階段開發)`)
-    
-    // 之後可以跳轉到結果頁面或影片生成頁面
-    // router.push('/video-generation?messages=' + encodeURIComponent(JSON.stringify(messages)))
-  }
+  // 設定歡迎訊息
+  useEffect(() => {
+    if (currentTemplate) {
+      setCurrentMessage(currentTemplate.welcomeMessage);
+    }
+  }, [currentTemplate]);
 
-  const handleError = (error: Error) => {
-    console.error('語音對話錯誤:', error)
-    // 這裡可以添加錯誤追蹤或通知
-  }
+  const initializeVoiceClient = async () => {
+    try {
+      const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+      
+      if (!apiKey) {
+        setCurrentMessage('哎呀～需要設定 API Key 才能和我聊天呢！請檢查環境變數設定哦～');
+        return;
+      }
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-xl text-text">載入中...</div>
-      </div>
-    )
-  }
+      const client = new VoiceAIClient({
+        apiKey,
+        model: 'gemini-2.0-flash-exp',
+        voice: 'Aoede',
+        language: 'zh-TW'
+      });
+
+      // 設定事件監聽
+      client.on('connected', () => {
+        setIsConnected(true);
+        setBearExpression('🐻😊');
+      });
+
+      client.on('disconnected', () => {
+        setIsConnected(false);
+        setBearExpression('🐻😴');
+      });
+
+      client.on('message', (message) => {
+        setConversation(prev => [...prev, message]);
+        if (message.type === 'assistant') {
+          setCurrentMessage(message.content);
+          setBearExpression('🐻💬');
+        }
+      });
+
+      client.on('stateChanged', (state: VoiceState) => {
+        setIsRecording(state.isRecording);
+        setIsPlaying(state.isPlaying);
+        
+        if (state.isRecording) {
+          setBearExpression('🐻👂');
+        } else if (state.isPlaying) {
+          setBearExpression('🐻💬');
+        } else if (state.isConnected) {
+          setBearExpression('🐻😊');
+        }
+      });
+
+      setVoiceClient(client);
+
+    } catch (error) {
+      console.error('語音初始化失敗:', error);
+      setCurrentMessage('哎呀～我現在有點不舒服，連接不上呢！請稍後再試試看～');
+      setBearExpression('🐻😵');
+    }
+  };
+
+  const handleMicClick = async () => {
+    if (!voiceClient) {
+      await initializeVoiceClient();
+      return;
+    }
+
+    if (!isConnected) {
+      try {
+        await voiceClient.connect({
+          templateId: template,
+          templateName: currentTemplate.title,
+          conversationHistory: conversation,
+          currentStep: 1,
+          learningGoals: []
+        });
+      } catch (error) {
+        console.error('連接失敗:', error);
+        setCurrentMessage('哎呀～我現在連接不上，請檢查網路或重新整理頁面試試看！');
+        setBearExpression('🐻😵');
+      }
+      return;
+    }
+
+    try {
+      if (isRecording) {
+        voiceClient.stopRecording();
+      } else {
+        await voiceClient.startRecording();
+      }
+    } catch (error) {
+      console.error('錄音操作失敗:', error);
+      setCurrentMessage('哎呀～麥克風好像有問題，請檢查權限設定！');
+      setBearExpression('🐻🤔');
+    }
+  };
+
+  const getMicButtonStyle = () => {
+    if (isRecording) {
+      return 'bg-red-400 hover:bg-red-500 animate-pulse shadow-lg shadow-red-200';
+    }
+    if (!isConnected) {
+      return 'bg-gray-400 hover:bg-gray-500';
+    }
+    return 'bg-white hover:bg-gray-50 shadow-lg hover:shadow-xl border-4 border-orange-200 hover:border-orange-300';
+  };
+
+  const getMicIcon = () => {
+    if (isRecording) return '🔴';
+    if (!isConnected) return '🔌';
+    return '🎤';
+  };
+
+  const getStatusMessage = () => {
+    if (isRecording) return '我在聽呢～說吧！';
+    if (isPlaying) return '讓我想想...';
+    if (!isConnected) return '點擊麥克風開始聊天！';
+    return '點擊麥克風說話～';
+  };
 
   return (
-    <main className="min-h-screen bg-background flex flex-col">
-      {/* Header */}
-      <header className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <button 
-              onClick={() => router.push('/template-experience')}
-              className="flex items-center text-primary hover:text-primary/80"
-            >
-              ← 返回模板選擇
-            </button>
-            <h1 className="text-xl font-bold text-text">
-              {template.emoji} {template.name} - 語音創作
-            </h1>
-            <button
-              onClick={() => router.push('/voice-test')}
-              className="text-sm text-gray-500 hover:text-gray-700"
-            >
-              測試連接
-            </button>
-          </div>
-        </div>
-      </header>
-
-      <div className="flex-1 flex">
-        {/* 左側 - 語音對話區域 */}
-        <div className="flex-1 flex flex-col">
-          <VoiceChatInterface
-            templateId={templateId}
-            templateName={template.name}
-            templateEmoji={template.emoji}
-            onComplete={handleConversationComplete}
-            onError={handleError}
-          />
-        </div>
-
-        {/* 右側 - 學習指導區域 */}
-        <div className="w-80 bg-gray-50 border-l border-gray-200 p-6 overflow-y-auto">
-          <div className="space-y-6">
-            {/* 模板資訊 */}
-            <div className="card">
-              <h3 className="text-lg font-bold text-text mb-3">
-                {template.emoji} {template.name}
-              </h3>
-              <p className="text-gray-700 text-sm leading-relaxed">
-                {template.description}
-              </p>
-            </div>
-
-            {/* 家長小幫手 */}
-            <div className="card">
-              <h3 className="text-lg font-bold text-text mb-3">💡 家長小幫手</h3>
-              <div className="space-y-3">
-                <div className="bg-yellow-50 rounded-lg p-3">
-                  <h4 className="font-semibold text-yellow-800 text-sm mb-2">引導技巧</h4>
-                  <ul className="text-yellow-700 text-xs space-y-1">
-                    {template.learningTips.map((tip, index) => (
-                      <li key={index} className="flex items-start gap-2">
-                        <span className="text-yellow-600 mt-0.5">•</span>
-                        <span>{tip}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-            </div>
-
-            {/* Prompt 提示 */}
-            <div className="card">
-              <h3 className="text-lg font-bold text-text mb-3">🎨 Prompt 提示</h3>
-              <div className="space-y-3">
-                <div className="bg-blue-50 rounded-lg p-3">
-                  <h4 className="font-semibold text-blue-800 text-sm mb-2">描述建議</h4>
-                  <ul className="text-blue-700 text-xs space-y-1">
-                    {template.promptHints.map((hint, index) => (
-                      <li key={index} className="flex items-start gap-2">
-                        <span className="text-blue-600 mt-0.5">•</span>
-                        <span>{hint}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-            </div>
-
-            {/* Prompt 品質分析 */}
-            <div className="card">
-              <h3 className="text-lg font-bold text-text mb-3">📊 品質分析</h3>
-              <div className="space-y-3">
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="text-gray-600">描述清晰度</span>
-                    <span className="text-gray-500">0%</span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div className="bg-primary h-2 rounded-full w-0 transition-all duration-500"></div>
-                  </div>
-                </div>
-                
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="text-gray-600">創意豐富度</span>
-                    <span className="text-gray-500">0%</span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div className="bg-secondary h-2 rounded-full w-0 transition-all duration-500"></div>
-                  </div>
-                </div>
-                
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="text-gray-600">情感表達</span>
-                    <span className="text-gray-500">0%</span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div className="bg-success h-2 rounded-full w-0 transition-all duration-500"></div>
-                  </div>
-                </div>
-              </div>
-              <p className="text-xs text-gray-500 mt-3">
-                開始對話後，這裡會顯示即時的品質分析
-              </p>
-            </div>
-
-            {/* 學習進度 */}
-            <div className="card">
-              <h3 className="text-lg font-bold text-text mb-3">📈 學習進度</h3>
-              <div className="text-center">
-                <div className="relative w-16 h-16 mx-auto mb-3">
-                  <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center">
-                    <span className="text-lg font-bold text-gray-500">0%</span>
-                  </div>
-                </div>
-                <p className="text-sm text-gray-600">
-                  完成對話後會更新進度
-                </p>
-              </div>
-            </div>
-
-            {/* 快速操作 */}
-            <div className="card">
-              <h3 className="text-lg font-bold text-text mb-3">⚡ 快速操作</h3>
-              <div className="space-y-2">
-                <button
-                  onClick={() => router.push('/voice-test')}
-                  className="w-full text-left px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
-                >
-                  🔧 測試語音連接
-                </button>
-                <button
-                  onClick={() => router.push('/template-experience')}
-                  className="w-full text-left px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
-                >
-                  🔄 切換模板
-                </button>
-                <button
-                  onClick={() => alert('學習歷程功能將在後續開發！')}
-                  className="w-full text-left px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
-                >
-                  📚 查看學習歷程
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+    <div className={`min-h-screen ${currentTemplate.bgColor} relative overflow-hidden`}>
+      {/* 可愛的背景裝飾 */}
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute top-10 left-10 text-4xl opacity-20">☁️</div>
+        <div className="absolute top-20 right-20 text-3xl opacity-20">🌟</div>
+        <div className="absolute bottom-20 left-20 text-3xl opacity-20">🌸</div>
+        <div className="absolute bottom-10 right-10 text-4xl opacity-20">🌈</div>
+        <div className="absolute top-1/3 left-1/4 text-2xl opacity-15">💫</div>
+        <div className="absolute top-2/3 right-1/3 text-2xl opacity-15">🦋</div>
       </div>
-    </main>
-  )
+
+      {/* 返回按鈕 */}
+      <div className="absolute top-4 left-4 z-10">
+        <button
+          onClick={() => router.push('/')}
+          className="bg-white/80 backdrop-blur-sm rounded-full p-3 shadow-md hover:shadow-lg transition-all"
+        >
+          <span className="text-xl">👈</span>
+        </button>
+      </div>
+
+      {/* 主要內容 */}
+      <div className="relative z-10 flex flex-col items-center justify-center min-h-screen p-6">
+        
+        {/* 標題區域 */}
+        <div className="text-center mb-8">
+          <div className="text-5xl mb-2">{currentTemplate.emoji}</div>
+          <h1 className="text-2xl font-bold text-gray-700 mb-1">
+            {currentTemplate.title} 小故事
+          </h1>
+          <div className="text-sm text-gray-500">和熊寶寶一起創作</div>
+        </div>
+
+        {/* 熊寶寶頭像區域 */}
+        <div className="mb-8">
+          <div className="relative">
+            <div className="text-8xl transition-all duration-500 hover:scale-110">
+              {bearExpression}
+            </div>
+            {/* 連接狀態指示器 */}
+            <div className="absolute -top-2 -right-2">
+              {isConnected ? (
+                <div className="w-4 h-4 bg-green-400 rounded-full animate-pulse"></div>
+              ) : (
+                <div className="w-4 h-4 bg-gray-400 rounded-full"></div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* 對話泡泡 */}
+        <div className="bg-white rounded-3xl p-6 shadow-lg max-w-md mx-auto mb-8 relative">
+          <div className="text-gray-700 text-center leading-relaxed">
+            {currentMessage}
+          </div>
+          {/* 泡泡尾巴 */}
+          <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-full">
+            <div className="w-0 h-0 border-l-4 border-r-4 border-t-8 border-transparent border-t-white"></div>
+          </div>
+        </div>
+
+        {/* 麥克風按鈕 */}
+        <div className="text-center mb-6">
+          <button
+            onClick={handleMicClick}
+            className={`
+              w-24 h-24 rounded-full text-4xl transition-all duration-300 transform hover:scale-105
+              ${getMicButtonStyle()}
+            `}
+          >
+            {getMicIcon()}
+          </button>
+          
+          <div className="mt-4 text-gray-600 font-medium">
+            {getStatusMessage()}
+          </div>
+
+          {/* 錄音波形動畫 */}
+          {isRecording && (
+            <div className="flex justify-center items-center mt-4 gap-1">
+              {[...Array(5)].map((_, i) => (
+                <div
+                  key={i}
+                  className="w-1 bg-red-400 rounded-full animate-pulse"
+                  style={{
+                    height: `${Math.random() * 20 + 10}px`,
+                    animationDelay: `${i * 0.1}s`
+                  }}
+                ></div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* 小提示 */}
+        <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-4 max-w-sm mx-auto">
+          <div className="text-center">
+            <div className="text-xl mb-2">💡</div>
+            <div className="text-sm text-gray-600">
+              {template === 'daily-life' && '說說你今天做了什麼有趣的事情？'}
+              {template === 'adventure' && '想要什麼樣的冒險故事呢？'}
+              {template === 'animal-friend' && '想創造什麼可愛的動物朋友？'}
+            </div>
+          </div>
+        </div>
+
+        {/* 底部裝飾 */}
+        <div className="absolute bottom-0 left-0 right-0 h-20 bg-gradient-to-t from-white/20 to-transparent pointer-events-none"></div>
+      </div>
+
+      {/* 對話記錄（簡化版） */}
+      {conversation.length > 1 && (
+        <div className="fixed top-4 right-4 bg-white/90 backdrop-blur-sm rounded-2xl p-4 max-w-xs shadow-lg z-20">
+          <div className="text-xs text-gray-500 mb-2">對話記錄</div>
+          <div className="space-y-2 max-h-40 overflow-y-auto">
+            {conversation.slice(-3).map((msg, index) => (
+              <div key={index} className="text-xs">
+                <span className={msg.type === 'user' ? 'text-blue-600' : 'text-orange-600'}>
+                  {msg.type === 'user' ? '👤' : '🐻'}:
+                </span>
+                <span className="ml-1 text-gray-700">
+                  {msg.content.slice(0, 30)}
+                  {msg.content.length > 30 && '...'}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
