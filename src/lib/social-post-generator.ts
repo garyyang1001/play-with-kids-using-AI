@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenAI } from '@google/genai';
 
 export interface SocialPostContent {
   mainContent: string;
@@ -29,15 +29,17 @@ export interface SocialPostData {
 }
 
 export class SocialPostGenerator {
-  private genAI: GoogleGenerativeAI;
+  private client: GoogleGenAI;
 
-  constructor(apiKey: string) {
-    this.genAI = new GoogleGenerativeAI(apiKey);
+  constructor(apiKey?: string) {
+    const key = apiKey || process.env.GOOGLE_AI_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_AI_API_KEY;
+    if (!key) {
+      throw new Error('Google AI API Key 未設定');
+    }
+    this.client = new GoogleGenAI({ apiKey: key });
   }
 
   async generateSocialPost(data: SocialPostData): Promise<SocialPostContent> {
-    const model = this.genAI.getGenerativeModel({ model: 'gemini-pro' });
-
     const prompt = `
 作為親子 AI 創作平台的社群內容專家，請根據以下學習成果生成一個溫馨有趣的 Facebook 分享貼文：
 
@@ -77,9 +79,12 @@ export class SocialPostGenerator {
 `;
 
     try {
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text();
+      const response = await this.client.models.generateContent({
+        model: 'gemini-2.0-flash-001',
+        contents: prompt
+      });
+      
+      const text = response.text;
       
       // 解析 JSON 回應
       const jsonMatch = text.match(/\{[\s\S]*\}/);
