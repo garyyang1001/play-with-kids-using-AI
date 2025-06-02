@@ -86,9 +86,10 @@ export default function TemplateExperience() {
 
   const handleStartCreation = () => {
     if (selectedTemplate) {
-      alert(`準備開始 "${selectedTemplate.name}" 創作體驗！\n\n下一步將進入語音對話系統...`)
-      // 之後會跳轉到語音對話頁面
-      // router.push(`/voice-chat?template=${selectedTemplate.id}`)
+      // 跳轉到語音對話頁面，並傳遞模板參數
+      router.push(`/voice-chat?template=${selectedTemplate.id}`)
+    } else {
+      alert('請先選擇一個模板！')
     }
   }
 
@@ -239,6 +240,18 @@ export default function TemplateExperience() {
                   <h4 className="font-semibold mb-2">分享作品</h4>
                   <p className="text-sm text-gray-600">與家人朋友分享你的創作成果</p>
                 </div>
+              </div>
+            </div>
+
+            {/* 開始提示 */}
+            <div className="card mb-8 bg-gradient-to-r from-primary/10 to-secondary/10">
+              <div className="text-center">
+                <h3 className="text-xl font-bold text-text mb-4">🚀 準備好開始了嗎？</h3>
+                <p className="text-gray-700 mb-6">
+                  點擊下方按鈕，進入語音對話系統，開始你的 AI 創作之旅！
+                  <br />
+                  我們的 AI 助手會一步步引導你學習 Prompt Engineering。
+                </p>
               </div>
             </div>
 
