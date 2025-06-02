@@ -57,6 +57,10 @@ export interface LearningReport {
     creativity: number; // 0-100
     confidence: number; // 0-100
     collaborationQuality: number; // 0-100
+    strengths: string[];
+    areasForGrowth: string[];
+    recommendations: string[];
+    nextSteps: string[];
   };
   aiGeneratedInsights: string;
 }
@@ -278,12 +282,96 @@ export class LearningReportGenerator {
     // 協作品質：基於親子互動品質
     const collaborationQuality = sessions.length > 3 ? 85 : Math.min(85, sessions.length * 20);
 
+    // 生成詳細的洞察內容
+    const strengths = this.generateStrengths(sessions, engagement, creativity, confidence);
+    const areasForGrowth = this.generateAreasForGrowth(sessions);
+    const recommendations = this.generateParentRecommendations(sessions);
+    const nextSteps = this.generateNextSteps(sessions);
+
     return {
       engagement: Math.round(engagement),
       creativity: Math.round(creativity),
       confidence: Math.round(confidence),
-      collaborationQuality: Math.round(collaborationQuality)
+      collaborationQuality: Math.round(collaborationQuality),
+      strengths,
+      areasForGrowth,
+      recommendations,
+      nextSteps
     };
+  }
+
+  private generateStrengths(sessions: LearningSessionData[], engagement: number, creativity: number, confidence: number): string[] {
+    const strengths: string[] = [];
+    
+    if (engagement >= 80) {
+      strengths.push('學習動機強烈，能主動參與AI創作活動');
+    }
+    if (creativity >= 75) {
+      strengths.push('創意思維活躍，在描述細節方面表現出色');
+    }
+    if (confidence >= 70) {
+      strengths.push('學習自信心足，願意嘗試新的表達方式');
+    }
+    if (sessions.length >= 5) {
+      strengths.push('學習持續性良好，建立了穩定的學習習慣');
+    }
+
+    // 如果沒有明顯優勢，添加一些基礎正面評價
+    if (strengths.length === 0) {
+      strengths.push('正在積極探索AI創作的可能性');
+      strengths.push('展現出對新技術學習的興趣');
+    }
+
+    return strengths;
+  }
+
+  private generateAreasForGrowth(sessions: LearningSessionData[]): string[] {
+    const areas: string[] = [];
+    
+    // 基於學習次數判斷
+    if (sessions.length < 3) {
+      areas.push('可以增加學習頻率，建立更穩定的學習節奏');
+    }
+    
+    // 基於 Prompt 品質改進
+    const avgImprovement = sessions.reduce((sum, s) => 
+      sum + s.promptEvolutions.reduce((pSum, p) => pSum + p.qualityScore.improvement, 0)
+    , 0) / sessions.length;
+    
+    if (avgImprovement < 2) {
+      areas.push('可以在描述細節方面更加豐富，增加感官描述');
+    }
+    
+    // 總是添加一些成長建議
+    areas.push('繼續探索不同的創作主題，拓展創意邊界');
+    
+    return areas;
+  }
+
+  private generateParentRecommendations(sessions: LearningSessionData[]): string[] {
+    return [
+      '每次學習後，花2-3分鐘與孩子討論學到的AI溝通技巧',
+      '鼓勵孩子在日常生活中練習詳細描述所見所聞',
+      '設定固定的親子AI創作時間，培養學習習慣',
+      '當孩子表達創意想法時，多用開放性問題引導深入思考',
+      '將AI創作與孩子的興趣愛好結合，提高學習動機'
+    ];
+  }
+
+  private generateNextSteps(sessions: LearningSessionData[]): string[] {
+    const nextSteps: string[] = [];
+    
+    if (sessions.length < 5) {
+      nextSteps.push('完成至少5次基礎創作練習，熟悉不同模板');
+    } else {
+      nextSteps.push('嘗試混合不同模板元素，創作更複雜的故事');
+    }
+    
+    nextSteps.push('練習使用更多形容詞和感官詞彙描述場景');
+    nextSteps.push('學習基本的故事結構：開始、發展、高潮、結局');
+    nextSteps.push('嘗試為創作的角色設計個性和背景故事');
+    
+    return nextSteps;
   }
 
   private async generateAIInsights(sessions: LearningSessionData[]): Promise<string> {
