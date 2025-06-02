@@ -1,7 +1,7 @@
 // 語音系統核心類型定義
 export interface VoiceAIConfig {
-  apiKey: string
-  model: string
+  apiKey?: string
+  model?: string
   voice?: string
   language?: string
   sampleRate?: number
@@ -32,25 +32,26 @@ export interface AudioConfig {
 }
 
 export interface VoiceAIClientEvents {
-  connected: () => void
-  disconnected: () => void
-  error: (error: Error) => void
-  message: (message: VoiceMessage) => void
-  audioReceived: (audioData: ArrayBuffer) => void
-  stateChanged: (state: VoiceState) => void
+  connected?: () => void
+  disconnected?: () => void
+  error?: (error: Error) => void
+  message?: (message: VoiceMessage) => void
+  audioReceived?: (audioData: ArrayBuffer) => void
+  stateChanged?: (state: VoiceState) => void
+  transcription?: (text: string) => void
 }
 
 export interface ConnectionStatus {
   connected: boolean
   lastPingTime: number
   reconnectAttempts: number
-  quality: 'excellent' | 'good' | 'poor' | 'unstable'
+  quality: 'excellent' | 'good' | 'poor' | 'disconnected'
 }
 
 export interface VoicePromptContext {
-  templateId: string
+  templateId?: string
   templateName: string
-  conversationHistory: VoiceMessage[]
+  conversationHistory?: VoiceMessage[]
   currentStep: number
   learningGoals: string[]
 }
