@@ -68,22 +68,26 @@ export default function CuteVoiceChatPage() {
         return;
       }
 
+      // 使用環境變數配置
       const client = new VoiceAIClient({
         apiKey,
-        model: 'gemini-2.0-flash-exp',
-        voice: 'Aoede',
-        language: 'zh-TW'
+        model: process.env.NEXT_PUBLIC_GEMINI_MODEL || 'gemini-2.0-flash-live-001',
+        voice: process.env.NEXT_PUBLIC_GEMINI_VOICE || 'Aoede',
+        language: process.env.NEXT_PUBLIC_GEMINI_LANGUAGE || 'zh-TW',
+        sampleRate: parseInt(process.env.NEXT_PUBLIC_GEMINI_SAMPLE_RATE || '16000')
       });
 
       // 設定事件監聽
       client.on('connected', () => {
         setIsConnected(true);
         setBearExpression('🐻😊');
+        setCurrentMessage('太好了！我現在可以和你聊天了！點擊麥克風開始說話吧～');
       });
 
       client.on('disconnected', () => {
         setIsConnected(false);
         setBearExpression('🐻😴');
+        setCurrentMessage('哎呀，連接斷開了...讓我重新連接一下！');
       });
 
       client.on('message', (message) => {
@@ -104,18 +108,30 @@ export default function CuteVoiceChatPage() {
         
         if (state.isRecording) {
           setBearExpression('🐻👂');
+          setCurrentMessage('我在仔細聽呢～請說話吧！');
         } else if (state.isPlaying) {
           setBearExpression('🐻💬');
         } else if (state.isConnected) {
           setBearExpression('🐻😊');
         }
+
+        if (state.error) {
+          setCurrentMessage(`哎呀，出現問題了：${state.error}`);
+          setBearExpression('🐻😵');
+        }
+      });
+
+      client.on('error', (error) => {
+        console.error('語音客戶端錯誤:', error);
+        setCurrentMessage(`連接出現問題：${error.message}`);
+        setBearExpression('🐻😵');
       });
 
       setVoiceClient(client);
 
     } catch (error) {
       console.error('語音初始化失敗:', error);
-      setCurrentMessage('哎呀～我現在有點不舒服，連接不上呢！請稍後再試試看～');
+      setCurrentMessage('哎呀～我現在有點不舒服，連接不上呢！請檢查 API Key 設定或重新整理頁面～');
       setBearExpression('🐻😵');
     }
   };
@@ -128,12 +144,15 @@ export default function CuteVoiceChatPage() {
 
     if (!isConnected) {
       try {
+        setCurrentMessage('正在連接中...請稍等～');
+        setBearExpression('🐻🔄');
+        
         await voiceClient.connect({
           templateId: template,
           templateName: currentTemplate.title,
           conversationHistory: conversation,
           currentStep: 1,
-          learningGoals: []
+          learningGoals: ['語音對話', 'Prompt Engineering', '創意表達']
         });
       } catch (error) {
         console.error('連接失敗:', error);
@@ -282,6 +301,7 @@ export default function CuteVoiceChatPage() {
               w-24 h-24 rounded-full text-4xl transition-all duration-300 transform hover:scale-105 mb-4
               ${getMicButtonStyle()}
             `}
+            disabled={isPlaying}
           >
             {getMicIcon()}
           </button>
@@ -303,6 +323,14 @@ export default function CuteVoiceChatPage() {
                   }}
                 ></div>
               ))}
+            </div>
+          )}
+
+          {/* 載入指示器 */}
+          {isPlaying && (
+            <div className="flex justify-center items-center mb-4">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-orange-400"></div>
+              <span className="ml-2 text-gray-600">AI 正在回應...</span>
             </div>
           )}
 
@@ -408,6 +436,16 @@ export default function CuteVoiceChatPage() {
               查看報告
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Debug 資訊（開發時顯示） */}
+      {process.env.NODE_ENV === 'development' && (
+        <div className="fixed bottom-4 left-4 bg-black/80 text-white text-xs p-2 rounded-lg z-20">
+          <div>連接狀態: {isConnected ? '已連接' : '未連接'}</div>
+          <div>錄音狀態: {isRecording ? '錄音中' : '停止'}</div>
+          <div>播放狀態: {isPlaying ? '播放中' : '停止'}</div>
+          <div>模型: {process.env.NEXT_PUBLIC_GEMINI_MODEL}</div>
         </div>
       )}
     </div>
