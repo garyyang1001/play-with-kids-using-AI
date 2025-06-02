@@ -39,23 +39,24 @@ export class VoiceAIClient {
   private audioParts: string[] = [];
 
   constructor(config: VoiceAIConfig) {
-    // 獲取模型名稱，優先使用環境變數
-    const modelName = process.env.NEXT_PUBLIC_GEMINI_MODEL || config.model || 'gemini-2.5-flash-preview-native-audio-dialog';
-    
-    // 獲取 API Key，統一使用 NEXT_PUBLIC_GEMINI_API_KEY
+    // 獲取 API Key，優先使用環境變數
     const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY || config.apiKey;
     
     if (!apiKey) {
       throw new Error('未設定 Gemini API Key。請在 .env.local 中設定 NEXT_PUBLIC_GEMINI_API_KEY');
     }
     
+    // 獲取模型名稱，優先使用環境變數
+    const modelName = process.env.NEXT_PUBLIC_GEMINI_MODEL || config.model || 'gemini-2.5-flash-preview-native-audio-dialog';
+    
+    // 合併配置，避免重複指定屬性
     this.config = {
-      apiKey,
-      model: modelName,
       voice: 'Leda',  // 使用支援中文的語音
       language: 'zh-TW',
       sampleRate: 16000,  // Live API 建議使用 16kHz 輸入
-      ...config
+      ...config,
+      apiKey,  // 明確設定 API Key
+      model: modelName  // 明確設定模型名稱
     };
     
     // 使用 v1alpha API 版本以支援原生音訊功能
