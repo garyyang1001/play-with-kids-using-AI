@@ -56,6 +56,10 @@ export interface ExtendedLearningReport extends BaseLearningReport {
     };
   };
   personalizedContent: {
+    celebrationMessage: string;
+    encouragementNote: string;
+    nextLearningGoals: string[];
+    recommendedTemplates: string[];
     encouragements: string[];
     tips: string[];
     challenges: string[];
