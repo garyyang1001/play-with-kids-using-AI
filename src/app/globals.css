@@ -1,0 +1,39 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    font-family: 'Noto Sans TC', 'Source Han Sans', 'PingFang TC', system-ui, sans-serif;
+  }
+  
+  body {
+    @apply bg-background text-text;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-primary hover:bg-primary/90 text-white font-medium py-3 px-6 rounded-lg transition-colors duration-200;
+  }
+  
+  .btn-secondary {
+    @apply bg-secondary hover:bg-secondary/90 text-white font-medium py-3 px-6 rounded-lg transition-colors duration-200;
+  }
+  
+  .card {
+    @apply bg-white rounded-2xl shadow-lg p-6 border border-gray-100;
+  }
+  
+  .voice-button {
+    @apply w-20 h-20 rounded-full flex items-center justify-center transition-all duration-200 transform hover:scale-105;
+  }
+  
+  .voice-button.recording {
+    @apply bg-red-500 animate-pulse shadow-lg;
+  }
+  
+  .voice-button.idle {
+    @apply bg-primary hover:bg-primary/90;
+  }
+}
