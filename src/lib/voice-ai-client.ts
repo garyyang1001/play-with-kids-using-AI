@@ -42,7 +42,15 @@ export class VoiceAIClient {
     // 獲取模型名稱，優先使用環境變數
     const modelName = process.env.NEXT_PUBLIC_GEMINI_MODEL || config.model || 'gemini-2.5-flash-preview-native-audio-dialog';
     
+    // 獲取 API Key，統一使用 NEXT_PUBLIC_GEMINI_API_KEY
+    const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY || config.apiKey;
+    
+    if (!apiKey) {
+      throw new Error('未設定 Gemini API Key。請在 .env.local 中設定 NEXT_PUBLIC_GEMINI_API_KEY');
+    }
+    
     this.config = {
+      apiKey,
       model: modelName,
       voice: 'Leda',  // 使用支援中文的語音
       language: 'zh-TW',
