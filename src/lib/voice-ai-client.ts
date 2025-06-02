@@ -46,12 +46,12 @@ export class VoiceAIClient {
       throw new Error('未設定 Gemini API Key。請在 .env.local 中設定 NEXT_PUBLIC_GEMINI_API_KEY');
     }
     
-    // 獲取模型名稱，優先使用環境變數
-    const modelName = process.env.NEXT_PUBLIC_GEMINI_MODEL || config.model || 'gemini-2.5-flash-preview-native-audio-dialog';
+    // 獲取模型名稱，優先使用環境變數，使用官方文檔的正確模型名稱
+    const modelName = process.env.NEXT_PUBLIC_GEMINI_MODEL || config.model || 'models/gemini-2.5-flash-preview-native-audio-dialog';
     
-    // 合併配置，避免重複指定屬性
+    // 合併配置，避免重複指定屬性，使用官方推薦設定
     this.config = {
-      voice: 'Leda',  // 使用支援中文的語音
+      voice: 'Zephyr',  // 官方示例使用的語音
       language: 'zh-TW',
       sampleRate: 16000,  // Live API 建議使用 16kHz 輸入
       ...config,
@@ -59,12 +59,9 @@ export class VoiceAIClient {
       model: modelName  // 明確設定模型名稱
     };
     
-    // 使用 v1alpha API 版本以支援原生音訊功能
+    // 根據官方文檔初始化 GoogleGenAI
     this.genAI = new GoogleGenAI({
-      apiKey: this.config.apiKey,
-      httpOptions: {
-        apiVersion: "v1alpha"  // 原生音訊功能需要 v1alpha
-      }
+      apiKey: this.config.apiKey
     });
 
     this.sessionId = uuidv4();
@@ -178,21 +175,16 @@ export class VoiceAIClient {
    */
   private async establishLiveConnection(): Promise<void> {
     try {
+      // 根據官方文檔的配置
       const sessionConfig = {
         responseModalities: [Modality.AUDIO],
         mediaResolution: MediaResolution.MEDIA_RESOLUTION_MEDIUM,
         speechConfig: {
           voiceConfig: {
             prebuiltVoiceConfig: {
-              voiceName: this.config.voice || 'Leda',
+              voiceName: this.config.voice || 'Zephyr',
             }
           }
-        },
-        // 啟用情感對話（僅原生音訊模型支援）
-        enableAffectiveDialog: true,
-        // 啟用主動式音訊（僅原生音訊模型支援）
-        proactivity: {
-          proactiveAudio: true
         },
         contextWindowCompression: {
           triggerTokens: '25600',
