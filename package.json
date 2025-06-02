@@ -10,7 +10,7 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@google/generative-ai": "^0.21.0",
+    "@google/generative-ai": "^0.31.0",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
