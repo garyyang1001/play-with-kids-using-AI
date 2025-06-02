@@ -39,9 +39,11 @@ export interface ConnectionStatus {
 }
 
 export interface VoicePromptContext {
+  templateId?: string;
   templateName: string;
   learningGoals: string[];
   currentStep: number;
+  conversationHistory?: VoiceMessage[];
 }
 
 export interface VoiceAIClientEvents {
@@ -120,6 +122,11 @@ export class VoiceAIClient {
     try {
       this.setState({ isLoading: true, error: null });
       this.promptContext = promptContext || null;
+
+      // 如果有傳入對話歷史，則使用它
+      if (promptContext?.conversationHistory) {
+        this.conversationHistory = [...promptContext.conversationHistory];
+      }
 
       // 初始化音訊
       await this.initializeAudioContext();
