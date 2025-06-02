@@ -36,11 +36,12 @@ export class VoiceAIClient {
   private audioContext: AudioContext | null = null;
   private mediaRecorder: MediaRecorder | null = null;
   private audioStream: MediaStream | null = null;
+  private audioParts: string[] = [];
 
   constructor(config: VoiceAIConfig) {
     this.config = {
-      model: 'models/gemini-2.0-flash-exp', // 使用正確的模型版本
-      voice: 'Aoede', // 台灣中文腔調
+      model: 'gemini-2.0-flash-live-001',  // 使用正確的 Live API 模型
+      voice: 'Aoede',
       language: 'zh-TW',
       sampleRate: 16000,
       ...config
@@ -287,7 +288,7 @@ export class VoiceAIClient {
         this.emit('message', assistantMessage);
       }
 
-      // 處理音訊回應
+      // 處理音訊回應（按照範例代碼的方式）
       if (part?.inlineData) {
         this.handleAudioResponse(part.inlineData);
       }
@@ -300,24 +301,95 @@ export class VoiceAIClient {
   }
 
   /**
-   * 處理音訊回應
+   * 處理音訊回應（按照範例代碼的實作）
    */
   private handleAudioResponse(inlineData: any): void {
     try {
-      const audioData = atob(inlineData.data);
-      const audioBuffer = new ArrayBuffer(audioData.length);
-      const audioView = new Uint8Array(audioBuffer);
-      
-      for (let i = 0; i < audioData.length; i++) {
-        audioView[i] = audioData.charCodeAt(i);
-      }
+      const fileName = 'audio.wav';
+      this.audioParts.push(inlineData?.data ?? '');
 
+      // 使用範例代碼中的 WAV 轉換方法
+      const buffer = this.convertToWav(this.audioParts, inlineData.mimeType ?? '');
+      
       // 播放音訊
-      this.playAudioResponse(audioBuffer);
-      this.emit('audioReceived', audioBuffer);
+      this.playAudioResponse(buffer);
+      this.emit('audioReceived', buffer);
     } catch (error) {
       console.error('音訊回應處理失敗:', error);
     }
+  }
+
+  /**
+   * 轉換為 WAV 格式（按照範例代碼）
+   */
+  private convertToWav(rawData: string[], mimeType: string): ArrayBuffer {
+    const options = this.parseMimeType(mimeType);
+    const dataLength = rawData.reduce((a, b) => a + b.length, 0);
+    const wavHeader = this.createWavHeader(dataLength, options);
+    const buffer = Buffer.concat(rawData.map(data => Buffer.from(data, 'base64')));
+
+    return Buffer.concat([wavHeader, buffer]).buffer;
+  }
+
+  /**
+   * 解析 MIME 類型（按照範例代碼）
+   */
+  private parseMimeType(mimeType: string) {
+    const [fileType, ...params] = mimeType.split(';').map(s => s.trim());
+    const [_, format] = fileType.split('/');
+
+    const options: any = {
+      numChannels: 1,
+      bitsPerSample: 16,
+      sampleRate: this.config.sampleRate,
+    };
+
+    if (format && format.startsWith('L')) {
+      const bits = parseInt(format.slice(1), 10);
+      if (!isNaN(bits)) {
+        options.bitsPerSample = bits;
+      }
+    }
+
+    for (const param of params) {
+      const [key, value] = param.split('=').map(s => s.trim());
+      if (key === 'rate') {
+        options.sampleRate = parseInt(value, 10);
+      }
+    }
+
+    return options;
+  }
+
+  /**
+   * 創建 WAV 標頭（按照範例代碼）
+   */
+  private createWavHeader(dataLength: number, options: any): Buffer {
+    const {
+      numChannels,
+      sampleRate,
+      bitsPerSample,
+    } = options;
+
+    const byteRate = sampleRate * numChannels * bitsPerSample / 8;
+    const blockAlign = numChannels * bitsPerSample / 8;
+    const buffer = Buffer.alloc(44);
+
+    buffer.write('RIFF', 0);
+    buffer.writeUInt32LE(36 + dataLength, 4);
+    buffer.write('WAVE', 8);
+    buffer.write('fmt ', 12);
+    buffer.writeUInt32LE(16, 16);
+    buffer.writeUInt16LE(1, 20);
+    buffer.writeUInt16LE(numChannels, 22);
+    buffer.writeUInt32LE(sampleRate, 24);
+    buffer.writeUInt32LE(byteRate, 28);
+    buffer.writeUInt16LE(blockAlign, 32);
+    buffer.writeUInt16LE(bitsPerSample, 34);
+    buffer.write('data', 36);
+    buffer.writeUInt32LE(dataLength, 40);
+
+    return buffer;
   }
 
   /**
@@ -395,20 +467,45 @@ export class VoiceAIClient {
         });
       }
 
-      // 創建 MediaRecorder 進行即時音訊流
+      // 重置音訊部分
+      this.audioParts = [];
+
+      // 創建 MediaRecorder
       this.mediaRecorder = new MediaRecorder(this.audioStream, {
         mimeType: 'audio/webm;codecs=opus'
       });
 
-      this.mediaRecorder.ondataavailable = async (event) => {
-        if (event.data.size > 0 && this.session) {
-          const arrayBuffer = await event.data.arrayBuffer();
-          // 即時發送音訊數據到 Live API
-          this.sendAudioToAPI(arrayBuffer);
+      const audioChunks: Blob[] = [];
+
+      this.mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunks.push(event.data);
         }
       };
 
-      this.mediaRecorder.start(100); // 每100ms收集一次數據
+      // 錄音結束時處理音訊
+      this.mediaRecorder.onstop = async () => {
+        try {
+          const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+          const arrayBuffer = await audioBlob.arrayBuffer();
+          
+          // 將音訊轉換為 base64 並發送（這裡需要正確的轉換方式）
+          const base64Audio = this.arrayBufferToBase64(arrayBuffer);
+          
+          // 發送到 Live API（需要正確的發送方式）
+          if (this.session) {
+            // 這裡需要按照正確的 Live API 方式發送音訊
+            // this.session.sendAudio(base64Audio);
+            console.log('音訊已準備發送:', base64Audio.slice(0, 100) + '...');
+          }
+          
+        } catch (error) {
+          console.error('音訊處理失敗:', error);
+          this.setState({ error: '音訊處理失敗' });
+        }
+      };
+
+      this.mediaRecorder.start(100);
       this.setState({ isRecording: true });
       
       console.log('開始錄音');
@@ -434,56 +531,15 @@ export class VoiceAIClient {
   }
 
   /**
-   * 發送音訊到 API
+   * 將 ArrayBuffer 轉換為 Base64
    */
-  private async sendAudioToAPI(audioData: ArrayBuffer): Promise<void> {
-    if (!this.session) return;
-
-    try {
-      // 轉換音訊格式為 Live API 需要的格式
-      const processedAudio = await this.convertAudioForAPI(audioData);
-      
-      // 發送音訊數據到 Live API
-      // 注意：這裡需要根據實際的 Live API 介面調整
-      // this.session.sendAudio(processedAudio);
-      
-    } catch (error) {
-      console.error('音訊發送失敗:', error);
+  private arrayBufferToBase64(buffer: ArrayBuffer): string {
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    for (let i = 0; i < bytes.byteLength; i++) {
+      binary += String.fromCharCode(bytes[i]);
     }
-  }
-
-  /**
-   * 轉換音訊格式供 API 使用
-   */
-  private async convertAudioForAPI(audioData: ArrayBuffer): Promise<ArrayBuffer> {
-    if (!this.audioContext) {
-      throw new Error('音訊上下文未初始化');
-    }
-
-    try {
-      const audioBuffer = await this.audioContext.decodeAudioData(audioData.slice(0));
-      const pcmData = this.audioBufferToPCM(audioBuffer);
-      return pcmData;
-    } catch (error) {
-      console.error('音訊格式轉換失敗:', error);
-      throw new Error('音訊格式轉換失敗');
-    }
-  }
-
-  /**
-   * 將 AudioBuffer 轉換為 PCM 數據
-   */
-  private audioBufferToPCM(audioBuffer: AudioBuffer): ArrayBuffer {
-    const length = audioBuffer.length;
-    const pcmData = new Int16Array(length);
-    const channelData = audioBuffer.getChannelData(0);
-    
-    for (let i = 0; i < length; i++) {
-      const sample = Math.max(-1, Math.min(1, channelData[i]));
-      pcmData[i] = sample * 0x7FFF;
-    }
-    
-    return pcmData.buffer;
+    return btoa(binary);
   }
 
   /**
