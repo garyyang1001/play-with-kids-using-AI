@@ -53,7 +53,9 @@ export default function TemplateTestPage() {
         availableTemplates: templates.length
       });
     } catch (error) {
-      addTestResult('❌ 系統初始化失敗', { error: error.message });
+      addTestResult('❌ 系統初始化失敗', { 
+        error: error instanceof Error ? error.message : '未知錯誤' 
+      });
     }
     setLoading(false);
   };
@@ -126,7 +128,9 @@ export default function TemplateTestPage() {
         stagesCount: instance.stages.length
       });
     } catch (error) {
-      addTestResult('❌ 模板實例創建失敗', { error: error.message });
+      addTestResult('❌ 模板實例創建失敗', { 
+        error: error instanceof Error ? error.message : '未知錯誤' 
+      });
     }
     setLoading(false);
   };
@@ -155,7 +159,9 @@ export default function TemplateTestPage() {
         coachingAdvice: result.coachingAdvice?.improvements?.slice(0, 2)
       });
     } catch (error) {
-      addTestResult('❌ 階段執行失敗', { error: error.message });
+      addTestResult('❌ 階段執行失敗', { 
+        error: error instanceof Error ? error.message : '未知錯誤' 
+      });
     }
     setLoading(false);
   };
@@ -186,7 +192,9 @@ export default function TemplateTestPage() {
         sessionContext: guidance.session.energyLevel
       });
     } catch (error) {
-      addTestResult('❌ 適應性指導失敗', { error: error.message });
+      addTestResult('❌ 適應性指導失敗', { 
+        error: error instanceof Error ? error.message : '未知錯誤' 
+      });
     }
     setLoading(false);
   };
@@ -204,7 +212,9 @@ export default function TemplateTestPage() {
         recommendations: report.recommendations.slice(0, 2)
       });
     } catch (error) {
-      addTestResult('❌ 進度分析失敗', { error: error.message });
+      addTestResult('❌ 進度分析失敗', { 
+        error: error instanceof Error ? error.message : '未知錯誤' 
+      });
     }
     setLoading(false);
   };
