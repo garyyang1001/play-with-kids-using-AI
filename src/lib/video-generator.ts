@@ -1,9 +1,9 @@
 /**
- * Video Generator Engine
- * 核心影片生成引擎，整合 Veo2 API
+ * Video Generator Engine（修正版）
+ * 核心影片生成引擎，正確整合 Veo2 API
  */
 
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenAI } from '@google/genai';
 import { v4 as uuidv4 } from 'uuid';
 import { OptimizedVideoPrompt, Veo2Config } from './video-prompt-optimizer';
 
@@ -54,7 +54,7 @@ export interface VideoQualityMetrics {
 }
 
 export class VideoGenerator {
-  private genAI: GoogleGenerativeAI;
+  private client: GoogleGenAI;
   private generationQueue: Map<string, VideoGenerationRequest> = new Map();
   private progressMap: Map<string, VideoGenerationProgress> = new Map();
   private activeGenerations: Set<string> = new Set();
@@ -62,11 +62,11 @@ export class VideoGenerator {
   private queueLimit = 10;
 
   constructor() {
-    const apiKey = process.env.GOOGLE_AI_API_KEY || process.env.VEO2_API_KEY;
+    const apiKey = process.env.GOOGLE_AI_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_AI_API_KEY;
     if (!apiKey) {
       throw new Error('Google AI API Key 未設定');
     }
-    this.genAI = new GoogleGenerativeAI(apiKey);
+    this.client = new GoogleGenAI({ apiKey });
   }
 
   /**
@@ -165,7 +165,7 @@ export class VideoGenerator {
   }
 
   /**
-   * 核心影片生成邏輯
+   * 核心影片生成邏輯（使用正確的 Veo2 API）
    */
   private async generateVideo(request: VideoGenerationRequest): Promise<void> {
     const startTime = Date.now();
@@ -179,9 +179,6 @@ export class VideoGenerator {
         startedAt: new Date()
       });
 
-      // 準備 Veo2 請求
-      const generateRequest = this.prepareVeo2Request(request);
-      
       // 更新進度：正在生成
       this.updateProgress(request.id, {
         status: 'generating',
@@ -190,8 +187,8 @@ export class VideoGenerator {
         estimatedTimeRemaining: 120
       });
 
-      // 調用 Veo2 API
-      const result = await this.callVeo2API(generateRequest);
+      // 調用 Veo2 API（正確的方式）
+      const result = await this.callVeo2API(request);
       
       // 更新進度：最終化
       this.updateProgress(request.id, {
@@ -217,67 +214,103 @@ export class VideoGenerator {
   }
 
   /**
-   * 準備 Veo2 API 請求
+   * 調用 Veo2 API（正確實作）
    */
-  private prepareVeo2Request(request: VideoGenerationRequest) {
-    return {
-      prompt: request.prompt,
-      aspectRatio: request.config.aspectRatio,
-      durationSeconds: request.config.durationSeconds,
-      numberOfVideos: request.config.numberOfVideos,
-      personGeneration: request.config.personGeneration
-    };
+  private async callVeo2API(request: VideoGenerationRequest): Promise<any> {
+    try {
+      // 正確的 Veo2 API 調用方式
+      const operation = await this.client.models.generateVideos({
+        model: 'veo-2.0-generate-001',
+        prompt: request.prompt,
+        config: {
+          aspectRatio: request.config.aspectRatio as '9:16' | '16:9' | '1:1',
+          personGeneration: request.config.personGeneration as 'dont_allow' | 'allow_adult'
+        }
+      });
+
+      // 等待操作完成
+      let currentOperation = operation;
+      while (!currentOperation.done) {
+        // 更新進度
+        this.updateProgress(request.id, {
+          status: 'generating',
+          progress: 50,
+          currentStage: '影片生成中...',
+          estimatedTimeRemaining: 60
+        });
+
+        // 等待20秒後檢查狀態
+        await new Promise(resolve => setTimeout(resolve, 20000));
+        
+        // 獲取操作狀態
+        currentOperation = await this.client.operations.get(currentOperation);
+      }
+
+      // 檢查結果
+      if (currentOperation.response && currentOperation.response.generatedVideos) {
+        const generatedVideo = currentOperation.response.generatedVideos[0];
+        
+        // 下載影片文件
+        const videoFile = await this.client.files.download({ file: generatedVideo.video });
+        
+        return {
+          videoData: videoFile,
+          metadata: {
+            duration: request.config.durationSeconds || 5,
+            aspectRatio: request.config.aspectRatio,
+            fileSize: videoFile.size
+          }
+        };
+      } else {
+        throw new Error('影片生成失敗：無回應數據');
+      }
+      
+    } catch (error) {
+      console.error('Veo2 API 調用錯誤:', error);
+      
+      // 如果是開發環境，返回模擬數據
+      if (process.env.NEXT_PUBLIC_DEBUG_MODE === 'true') {
+        console.log('使用模擬影片數據（開發模式）');
+        return this.getMockVideoData(request);
+      }
+      
+      throw new Error(`Veo2 API 調用失敗: ${error instanceof Error ? error.message : '未知錯誤'}`);
+    }
   }
 
   /**
-   * 調用 Veo2 API
+   * 模擬影片數據（開發模式使用）
    */
-  private async callVeo2API(generateRequest: any): Promise<any> {
-    try {
-      // 注意：這裡是模擬 Veo2 API 調用
-      // 實際實作需要根據 Google Cloud Vertex AI 的 Veo2 API 文檔
-      
-      // 模擬 API 調用延遲
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // 模擬成功回應
-      return {
-        videoData: new Uint8Array(1024 * 1024), // 模擬影片數據
-        thumbnailData: new Uint8Array(1024 * 50), // 模擬縮圖數據
-        metadata: {
-          duration: generateRequest.durationSeconds,
-          aspectRatio: generateRequest.aspectRatio,
-          fileSize: 1024 * 1024
-        }
-      };
-      
-      // 實際實作應該使用以下類似代碼：
-      /*
-      const model = this.genAI.getGenerativeModel({ 
-        model: 'veo-2.0-generate-001' 
-      });
-      
-      const result = await model.generateContent({
-        contents: [{
-          role: 'user',
-          parts: [{
-            text: generateRequest.prompt
-          }]
-        }],
-        generationConfig: {
-          video: {
-            aspectRatio: generateRequest.aspectRatio,
-            durationSeconds: generateRequest.durationSeconds,
-            numberOfVideos: generateRequest.numberOfVideos
-          }
-        }
-      });
-      
-      return result;
-      */
-    } catch (error) {
-      throw new Error(`Veo2 API 調用失敗: ${error}`);
+  private getMockVideoData(request: VideoGenerationRequest) {
+    // 創建一個簡單的模擬影片（1秒的空白影片）
+    const canvas = document.createElement('canvas');
+    canvas.width = 640;
+    canvas.height = 360;
+    const ctx = canvas.getContext('2d');
+    
+    if (ctx) {
+      ctx.fillStyle = '#4A90E2';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = 'white';
+      ctx.font = '24px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText('Demo Video', canvas.width / 2, canvas.height / 2);
+      ctx.fillText(request.prompt.slice(0, 30) + '...', canvas.width / 2, canvas.height / 2 + 40);
     }
+
+    // 轉換為 Blob
+    return new Promise(resolve => {
+      canvas.toBlob(blob => {
+        resolve({
+          videoData: blob,
+          metadata: {
+            duration: request.config.durationSeconds || 5,
+            aspectRatio: request.config.aspectRatio,
+            fileSize: blob?.size || 0
+          }
+        });
+      }, 'image/png');
+    });
   }
 
   /**
@@ -289,13 +322,17 @@ export class VideoGenerator {
     startTime: number
   ): Promise<VideoGenerationResult> {
     try {
-      // 創建影片 Blob
-      const videoBlob = new Blob([apiResult.videoData], { type: 'video/mp4' });
-      const videoUrl = URL.createObjectURL(videoBlob);
+      let videoBlob: Blob;
+      let videoUrl: string;
+
+      if (apiResult.videoData instanceof Blob) {
+        videoBlob = apiResult.videoData;
+      } else {
+        // 如果是其他格式，轉換為 Blob
+        videoBlob = new Blob([apiResult.videoData], { type: 'video/mp4' });
+      }
       
-      // 創建縮圖 Blob
-      const thumbnailBlob = new Blob([apiResult.thumbnailData], { type: 'image/jpeg' });
-      const thumbnailUrl = URL.createObjectURL(thumbnailBlob);
+      videoUrl = URL.createObjectURL(videoBlob);
 
       // 評估影片品質
       const qualityScore = await this.evaluateVideoQuality(videoBlob);
@@ -304,7 +341,6 @@ export class VideoGenerator {
         id: requestId,
         success: true,
         videoUrl,
-        thumbnailUrl,
         videoBlob,
         metadata: {
           prompt: this.getRequestPrompt(requestId),
@@ -397,7 +433,7 @@ export class VideoGenerator {
    * 獲取請求的 Prompt
    */
   private getRequestPrompt(requestId: string): string {
-    const request = this.generationQueue.get(requestId);
+    const request = Array.from(this.generationQueue.values()).find(r => r.id === requestId);
     return request?.prompt || '';
   }
 
