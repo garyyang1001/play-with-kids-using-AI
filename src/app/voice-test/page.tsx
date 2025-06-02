@@ -7,13 +7,13 @@ import type { StabilityTestResult } from '@/lib/connection-stability-tester'
 
 export default function VoiceTest() {
   const router = useRouter()
-  const [istesting, setIseTesting] = useState(false)
+  const [isTesting, setIsTesting] = useState(false)
   const [testResult, setTestResult] = useState<StabilityTestResult | null>(null)
   const [apiKey, setApiKey] = useState('')
   const [showApiKeyInput, setShowApiKeyInput] = useState(false)
 
   const runStabilityTest = async () => {
-    setIseTesting(true)
+    setIsTesting(true)
     setTestResult(null)
 
     try {
@@ -56,7 +56,7 @@ export default function VoiceTest() {
       }
       setTestResult(errorResult)
     } finally {
-      setIseTesting(false)
+      setIsTesting(false)
     }
   }
 
@@ -166,15 +166,15 @@ export default function VoiceTest() {
         <div className="card mb-8 text-center">
           <button
             onClick={runStabilityTest}
-            disabled={iseTesting}
+            disabled={isTesting}
             className={`btn-primary text-lg px-8 py-4 ${
-              iseTesting ? 'opacity-50 cursor-not-allowed' : 'hover:transform hover:scale-105'
+              isTesting ? 'opacity-50 cursor-not-allowed' : 'hover:transform hover:scale-105'
             } transition-all duration-200`}
           >
-            {iseTesting ? '正在測試中...' : '🚀 開始連接測試'}
+            {isTesting ? '正在測試中...' : '🚀 開始連接測試'}
           </button>
           
-          {iseTesting && (
+          {isTesting && (
             <div className="mt-4">
               <div className="flex items-center justify-center gap-2 text-gray-600">
                 <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
