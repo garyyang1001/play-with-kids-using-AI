@@ -6,7 +6,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { LearningReport } from '../../lib/learning-report-generator';
+import { ExtendedLearningReport } from '../../types/learning-report';
 import { OverallProgressCard } from './OverallProgressCard';
 import { SkillBreakdownChart } from './SkillBreakdownChart';
 import { TemplateMasteryView } from './TemplateMasteryView';
@@ -16,7 +16,7 @@ import { PersonalizedContentCard } from './PersonalizedContentCard';
 import { ProgressVisualization } from './ProgressVisualization';
 
 interface LearningReportDisplayProps {
-  report: LearningReport;
+  report: ExtendedLearningReport;
   userProfile?: {
     childName?: string;
     childAge?: number;
