@@ -16,6 +16,7 @@ import {
   SessionContext,
   LearningProgress 
 } from '@/types/template';
+import { PromptQualityScore } from '@/lib/types/prompt-engineering';
 
 export default function TemplateTestPage() {
   const [templateSystem] = useState(() => new TemplatePromptSystem());
@@ -96,17 +97,21 @@ export default function TemplateTestPage() {
 
     // 記錄模擬嘗試
     for (const attempt of mockAttempts) {
+      const qualityScore: PromptQualityScore = {
+        overall: attempt.score,
+        dimensions: attempt.dimensions,
+        improvementAreas: attempt.improvements,
+        strengths: ['創意表達', '場景描述'],
+        recommendedActions: ['繼續加強細節描述', '增加更多感官體驗'],
+        confidenceLevel: 0.85
+      };
+
       await progressTracker.recordAttempt(
         mockUserId,
         'daily-life-template',
         attempt.stageId,
         attempt.prompt,
-        {
-          overall: attempt.score,
-          dimensions: attempt.dimensions,
-          improvementAreas: attempt.improvements,
-          suggestions: []
-        },
+        qualityScore,
         attempt.timeSpent
       );
     }
