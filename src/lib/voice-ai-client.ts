@@ -305,10 +305,9 @@ export class VoiceAIClient {
    */
   private handleAudioResponse(inlineData: any): void {
     try {
-      const fileName = 'audio.wav';
       this.audioParts.push(inlineData?.data ?? '');
 
-      // 使用範例代碼中的 WAV 轉換方法
+      // 使用瀏覽器相容的 WAV 轉換方法
       const buffer = this.convertToWav(this.audioParts, inlineData.mimeType ?? '');
       
       // 播放音訊
@@ -320,19 +319,52 @@ export class VoiceAIClient {
   }
 
   /**
-   * 轉換為 WAV 格式（按照範例代碼）
+   * 轉換為 WAV 格式（瀏覽器相容版本）
    */
   private convertToWav(rawData: string[], mimeType: string): ArrayBuffer {
     const options = this.parseMimeType(mimeType);
-    const dataLength = rawData.reduce((a, b) => a + b.length, 0);
-    const wavHeader = this.createWavHeader(dataLength, options);
-    const buffer = Buffer.concat(rawData.map(data => Buffer.from(data, 'base64')));
-
-    return Buffer.concat([wavHeader, buffer]).buffer;
+    
+    // 計算總數據長度
+    let totalLength = 0;
+    const decodedData: Uint8Array[] = [];
+    
+    for (const data of rawData) {
+      const decoded = this.base64ToUint8Array(data);
+      decodedData.push(decoded);
+      totalLength += decoded.length;
+    }
+    
+    const wavHeader = this.createWavHeader(totalLength, options);
+    
+    // 合併 WAV 標頭和音訊數據
+    const result = new Uint8Array(wavHeader.length + totalLength);
+    result.set(wavHeader, 0);
+    
+    let offset = wavHeader.length;
+    for (const data of decodedData) {
+      result.set(data, offset);
+      offset += data.length;
+    }
+    
+    return result.buffer;
   }
 
   /**
-   * 解析 MIME 類型（按照範例代碼）
+   * Base64 轉 Uint8Array（瀏覽器相容）
+   */
+  private base64ToUint8Array(base64: string): Uint8Array {
+    const binaryString = atob(base64);
+    const bytes = new Uint8Array(binaryString.length);
+    
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    
+    return bytes;
+  }
+
+  /**
+   * 解析 MIME 類型
    */
   private parseMimeType(mimeType: string) {
     const [fileType, ...params] = mimeType.split(';').map(s => s.trim());
@@ -362,9 +394,9 @@ export class VoiceAIClient {
   }
 
   /**
-   * 創建 WAV 標頭（按照範例代碼）
+   * 創建 WAV 標頭（瀏覽器相容版本）
    */
-  private createWavHeader(dataLength: number, options: any): Buffer {
+  private createWavHeader(dataLength: number, options: any): Uint8Array {
     const {
       numChannels,
       sampleRate,
@@ -373,23 +405,38 @@ export class VoiceAIClient {
 
     const byteRate = sampleRate * numChannels * bitsPerSample / 8;
     const blockAlign = numChannels * bitsPerSample / 8;
-    const buffer = Buffer.alloc(44);
+    const buffer = new ArrayBuffer(44);
+    const view = new DataView(buffer);
 
-    buffer.write('RIFF', 0);
-    buffer.writeUInt32LE(36 + dataLength, 4);
-    buffer.write('WAVE', 8);
-    buffer.write('fmt ', 12);
-    buffer.writeUInt32LE(16, 16);
-    buffer.writeUInt16LE(1, 20);
-    buffer.writeUInt16LE(numChannels, 22);
-    buffer.writeUInt32LE(sampleRate, 24);
-    buffer.writeUInt32LE(byteRate, 28);
-    buffer.writeUInt16LE(blockAlign, 32);
-    buffer.writeUInt16LE(bitsPerSample, 34);
-    buffer.write('data', 36);
-    buffer.writeUInt32LE(dataLength, 40);
+    // RIFF header
+    this.writeString(view, 0, 'RIFF');
+    view.setUint32(4, 36 + dataLength, true);
+    this.writeString(view, 8, 'WAVE');
+    
+    // fmt chunk
+    this.writeString(view, 12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, numChannels, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, byteRate, true);
+    view.setUint16(32, blockAlign, true);
+    view.setUint16(34, bitsPerSample, true);
+    
+    // data chunk
+    this.writeString(view, 36, 'data');
+    view.setUint32(40, dataLength, true);
 
-    return buffer;
+    return new Uint8Array(buffer);
+  }
+
+  /**
+   * 寫入字符串到 DataView
+   */
+  private writeString(view: DataView, offset: number, string: string): void {
+    for (let i = 0; i < string.length; i++) {
+      view.setUint8(offset + i, string.charCodeAt(i));
+    }
   }
 
   /**
@@ -489,14 +536,14 @@ export class VoiceAIClient {
           const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
           const arrayBuffer = await audioBlob.arrayBuffer();
           
-          // 將音訊轉換為 base64 並發送（這裡需要正確的轉換方式）
+          // 將音訊轉換為 base64 並發送
           const base64Audio = this.arrayBufferToBase64(arrayBuffer);
           
-          // 發送到 Live API（需要正確的發送方式）
+          // 發送到 Live API（這裡需要正確的發送方式）
           if (this.session) {
-            // 這裡需要按照正確的 Live API 方式發送音訊
-            // this.session.sendAudio(base64Audio);
-            console.log('音訊已準備發送:', base64Audio.slice(0, 100) + '...');
+            // 注意：這裡需要按照實際的 Live API 介面調整
+            console.log('音訊已準備發送，長度:', base64Audio.length);
+            // 實際實作需要查閱 Live API 的音訊發送方法
           }
           
         } catch (error) {
