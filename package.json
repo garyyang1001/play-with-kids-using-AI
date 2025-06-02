@@ -20,11 +20,13 @@
     "react-dom": "^18",
     "typescript": "^5",
     "ws": "^8.18.0",
-    "uuid": "^10.0.0"
+    "uuid": "^10.0.0",
+    "mime": "^4.0.4"
   },
   "devDependencies": {
     "@types/ws": "^8.5.12",
     "@types/uuid": "^10.0.0",
+    "@types/mime": "^3.0.4",
     "autoprefixer": "^10.4.20",
     "eslint": "^8",
     "eslint-config-next": "14.2.5",
